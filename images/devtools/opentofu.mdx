@@ -1,0 +1,145 @@
+---
+title: "OpenTofu"
+description: "OpenTofu — the open-source Terraform fork"
+icon: "code"
+---
+
+[OpenTofu](https://github.com/opentofu/opentofu) is the open-source, community-driven fork of Terraform, maintained by the [Linux Foundation](https://www.linuxfoundation.org/). It was created after HashiCorp relicensed Terraform from MPL-2.0 to the Business Source License (BSL). OpenTofu retains full compatibility with existing Terraform HCL configurations and state files while committing to an open-governance model.
+
+This image is built from the OpenTofu source with CGO enabled (required for some providers) against a hardened Alpine runtime base. The binary is named `tofu`.
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/opentofu:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/opentofu:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+The image sets `tofu` as its `ENTRYPOINT`. The workflow mirrors Terraform exactly: `init` → `plan` → `apply`.
+
+### Basic workflow
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/jauderho/opentofu:latest \
+  init
+```
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/jauderho/opentofu:latest \
+  plan
+```
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/jauderho/opentofu:latest \
+  apply -auto-approve
+```
+
+### Full sequence with a saved plan
+
+```bash
+# Init
+docker run --rm -v $(pwd):/workspace -w /workspace \
+  ghcr.io/jauderho/opentofu:latest init
+
+# Plan and save
+docker run --rm -v $(pwd):/workspace -w /workspace \
+  ghcr.io/jauderho/opentofu:latest plan -out=tfplan
+
+# Apply the saved plan
+docker run --rm -v $(pwd):/workspace -w /workspace \
+  ghcr.io/jauderho/opentofu:latest apply tfplan
+```
+
+### Check the version
+
+```bash
+docker run --rm ghcr.io/jauderho/opentofu:latest version
+```
+
+## Cloud provider credentials
+
+Pass credentials via environment variables, the same as with Terraform:
+
+<Tabs>
+  <Tab title="AWS">
+    ```bash
+    docker run --rm \
+      -v $(pwd):/workspace \
+      -w /workspace \
+      -e AWS_ACCESS_KEY_ID \
+      -e AWS_SECRET_ACCESS_KEY \
+      -e AWS_DEFAULT_REGION \
+      ghcr.io/jauderho/opentofu:latest plan
+    ```
+  </Tab>
+  <Tab title="Azure">
+    ```bash
+    docker run --rm \
+      -v $(pwd):/workspace \
+      -w /workspace \
+      -e ARM_CLIENT_ID \
+      -e ARM_CLIENT_SECRET \
+      -e ARM_SUBSCRIPTION_ID \
+      -e ARM_TENANT_ID \
+      ghcr.io/jauderho/opentofu:latest plan
+    ```
+  </Tab>
+  <Tab title="GCP">
+    ```bash
+    docker run --rm \
+      -v $(pwd):/workspace \
+      -w /workspace \
+      -e GOOGLE_APPLICATION_CREDENTIALS=/workspace/sa-key.json \
+      ghcr.io/jauderho/opentofu:latest plan
+    ```
+  </Tab>
+</Tabs>
+
+## Differences from the Terraform image
+
+| Property | Terraform | OpenTofu |
+|---|---|---|
+| Binary name | `terraform` | `tofu` |
+| Upstream source | `github.com/hashicorp/terraform` | `github.com/opentofu/opentofu` |
+| License | Business Source License | Mozilla Public License 2.0 |
+| Governance | HashiCorp / IBM | Linux Foundation (open) |
+| CGO | Disabled | Enabled (musl, static) |
+| Build flags | `-ldflags="-s -w"` | `-ldflags="-s -w -X .../version.dev=no"` |
+
+<Note>
+  OpenTofu state files and HCL configurations are compatible with Terraform. You can switch between the two images without modifying your `.tf` files or state.
+</Note>
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine` (digest-pinned) |
+| Build base | `ghcr.io/jauderho/golang` (multi-stage, CGO enabled) |
+| Entrypoint | `/usr/local/bin/tofu` |
+| Platforms | `linux/amd64`, `linux/arm64` |
+| GHCR | `ghcr.io/jauderho/opentofu` |
+| Docker Hub | `docker.io/jauderho/opentofu` |
+
+<Tip>
+  Pin to a specific version tag in production (e.g., `ghcr.io/jauderho/opentofu:v2.0.0`) to guarantee reproducible runs.
+</Tip>

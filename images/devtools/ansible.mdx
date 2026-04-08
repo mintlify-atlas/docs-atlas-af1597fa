@@ -1,0 +1,146 @@
+---
+title: "Ansible"
+description: "Ansible automation platform for configuration management"
+icon: "server"
+---
+
+[Ansible](https://github.com/ansible/ansible) is Red Hat's agentless IT automation platform. It uses SSH (or WinRM for Windows) to connect to managed hosts, so no agent needs to be installed on targets. Playbooks are written in YAML and describe the desired state of systems — from package installation to service management to file templating.
+
+This image is Ubuntu-based (`ubuntu:26.04`) and includes:
+
+- `ansible` and `ansible-lint`
+- `pywinrm` (with Kerberos and CredSSP) for Windows remote management
+- `mitogen` for accelerated playbook execution
+- `storops` for Dell EMC storage automation
+- `openssh-client` for SSH-based connections to remote hosts
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/ansible:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/ansible:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+The image's working directory is `/ansible` and the default command prints the `ansible-playbook` version. Override it with your own `ansible-playbook` invocation.
+
+### Run a playbook
+
+Mount your playbook directory and inventory file, then invoke `ansible-playbook`:
+
+```bash
+docker run --rm \
+  -v $(pwd)/playbooks:/playbooks \
+  -v $(pwd)/inventory:/inventory \
+  ghcr.io/jauderho/ansible:latest \
+  ansible-playbook -i /inventory/hosts /playbooks/site.yml
+```
+
+### Pass extra variables
+
+```bash
+docker run --rm \
+  -v $(pwd)/playbooks:/playbooks \
+  -v $(pwd)/inventory:/inventory \
+  ghcr.io/jauderho/ansible:latest \
+  ansible-playbook -i /inventory/hosts /playbooks/site.yml \
+    --extra-vars "env=production version=1.2.3"
+```
+
+### Run an ad-hoc command
+
+```bash
+docker run --rm \
+  -v $(pwd)/inventory:/inventory \
+  ghcr.io/jauderho/ansible:latest \
+  ansible -i /inventory/hosts all -m ping
+```
+
+### Check the version
+
+```bash
+docker run --rm ghcr.io/jauderho/ansible:latest ansible-playbook --version
+```
+
+## SSH key mounting
+
+When managing remote Linux hosts over SSH, mount your private key into the container. Make sure the key file has permissions `0600`.
+
+```bash
+docker run --rm \
+  -v $(pwd)/playbooks:/playbooks \
+  -v $(pwd)/inventory:/inventory \
+  -v $HOME/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro \
+  ghcr.io/jauderho/ansible:latest \
+  ansible-playbook -i /inventory/hosts /playbooks/site.yml
+```
+
+<Warning>
+  Mount SSH keys as read-only (`:ro`) so the container cannot modify or exfiltrate them.
+</Warning>
+
+### Using an SSH config file
+
+If your inventory relies on SSH aliases or a jump host, mount your SSH config as well:
+
+```bash
+docker run --rm \
+  -v $(pwd)/playbooks:/playbooks \
+  -v $(pwd)/inventory:/inventory \
+  -v $HOME/.ssh:/root/.ssh:ro \
+  ghcr.io/jauderho/ansible:latest \
+  ansible-playbook -i /inventory/hosts /playbooks/site.yml
+```
+
+## Ansible vault
+
+Decrypt vault-encrypted variables at runtime by providing the vault password via an environment variable or a mounted file:
+
+<Tabs>
+  <Tab title="Password file">
+    ```bash
+    docker run --rm \
+      -v $(pwd)/playbooks:/playbooks \
+      -v $(pwd)/inventory:/inventory \
+      -v $(pwd)/.vault_pass:/vault_pass:ro \
+      ghcr.io/jauderho/ansible:latest \
+      ansible-playbook -i /inventory/hosts /playbooks/site.yml \
+        --vault-password-file /vault_pass
+    ```
+  </Tab>
+  <Tab title="Environment variable">
+    ```bash
+    docker run --rm \
+      -v $(pwd)/playbooks:/playbooks \
+      -v $(pwd)/inventory:/inventory \
+      -e ANSIBLE_VAULT_PASSWORD_FILE=/vault_pass \
+      -v $(pwd)/.vault_pass:/vault_pass:ro \
+      ghcr.io/jauderho/ansible:latest \
+      ansible-playbook -i /inventory/hosts /playbooks/site.yml
+    ```
+  </Tab>
+</Tabs>
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ubuntu:26.04` (digest-pinned) |
+| Working directory | `/ansible` |
+| Default command | `ansible-playbook --version` |
+| Platforms | `linux/amd64`, `linux/arm64` |
+| GHCR | `ghcr.io/jauderho/ansible` |
+| Docker Hub | `docker.io/jauderho/ansible` |
+
+<Note>
+  A default inventory containing only `localhost` is written to `/etc/ansible/hosts` at image build time. Override it with `-i /inventory/your-hosts-file` in all production runs.
+</Note>

@@ -1,0 +1,139 @@
+---
+title: "dnsx"
+description: "dnsx — fast and multi-purpose DNS toolkit from ProjectDiscovery"
+---
+
+[dnsx](https://github.com/projectdiscovery/dnsx) is a fast and multi-purpose DNS toolkit from ProjectDiscovery. It performs bulk DNS resolution, queries specific record types (A, AAAA, CNAME, MX, TXT, NS, PTR, SOA), and supports DNS brute forcing with a wordlist. It reads input from stdin or a file, making it straightforward to integrate into recon pipelines.
+
+The image label describes it as: *"dnsx is a fast and multi-purpose DNS toolkit"*.
+
+<Warning>
+Only run dnsx against domains you own or have explicit written permission to enumerate. Bulk DNS queries to third-party infrastructure without authorization may violate acceptable use policies and computer fraud laws.
+</Warning>
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/dnsx:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/dnsx:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+### Resolve a list of domains
+
+```bash
+docker run --rm \
+  -v "$(pwd)/targets:/targets" \
+  ghcr.io/jauderho/dnsx:latest \
+  -l /targets/domains.txt
+```
+
+### Resolve from stdin
+
+```bash
+cat domains.txt | docker run --rm -i ghcr.io/jauderho/dnsx:latest
+```
+
+### Query specific record types
+
+Query A and AAAA records together:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/targets:/targets" \
+  ghcr.io/jauderho/dnsx:latest \
+  -l /targets/domains.txt -a -aaaa -resp
+```
+
+Query CNAME and MX records:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/targets:/targets" \
+  ghcr.io/jauderho/dnsx:latest \
+  -l /targets/domains.txt -cname -mx -resp
+```
+
+### Pipe from Subfinder
+
+Resolve subdomains discovered by Subfinder directly to their A records:
+
+```bash
+docker run --rm ghcr.io/jauderho/subfinder:latest -d example.com -silent | \
+  docker run --rm -i ghcr.io/jauderho/dnsx:latest -a -resp -silent
+```
+
+### DNS brute force with a wordlist
+
+Use `-w` to brute force subdomains under a domain using a wordlist:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/wordlists:/wordlists" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/dnsx:latest \
+  -d example.com -w /wordlists/subdomains.txt -o /output/brute-results.txt
+```
+
+### JSON output
+
+```bash
+docker run --rm \
+  -v "$(pwd)/targets:/targets" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/dnsx:latest \
+  -l /targets/domains.txt -a -cname -json -o /output/dns-results.json
+```
+
+## Common flags
+
+| Flag | Description |
+|---|---|
+| `-a` | Query A records (IPv4 addresses) |
+| `-aaaa` | Query AAAA records (IPv6 addresses) |
+| `-cname` | Query CNAME records |
+| `-mx` | Query MX records |
+| `-ns` | Query NS records |
+| `-txt` | Query TXT records |
+| `-ptr` | Query PTR records (reverse DNS) |
+| `-resp` | Display the full DNS response alongside the input |
+| `-l <file>` | Input file containing one domain per line |
+| `-d <domain>` | Target domain (used with `-w` for brute force) |
+| `-w <file>` | Wordlist for DNS brute forcing |
+| `-json` | Emit results as newline-delimited JSON |
+| `-silent` | Suppress banner; print only results |
+| `-o <file>` | Write output to a file |
+
+<Note>
+dnsx uses `bind-tools` in the final image (installed via `apk add --no-cache bind-tools ca-certificates`), which provides the underlying DNS resolution utilities needed at runtime.
+</Note>
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine:3.23.3` |
+| Build base | `ghcr.io/jauderho/golang:1.26.1-alpine3.23` |
+| Entrypoint | `/usr/local/bin/dnsx` |
+| Default command | `-h` |
+| Source | [github.com/projectdiscovery/dnsx](https://github.com/projectdiscovery/dnsx) |
+
+<Tip>
+A common pipeline for full subdomain-to-IP mapping:
+
+```bash
+docker run --rm ghcr.io/jauderho/subfinder:latest -d example.com -silent | \
+  docker run --rm -i ghcr.io/jauderho/dnsx:latest -a -resp -silent
+```
+
+This discovers subdomains passively and immediately resolves each one to its A record.
+</Tip>

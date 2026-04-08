@@ -1,0 +1,293 @@
+---
+title: "Dockerfile Standards"
+description: "Standards and best practices for writing Dockerfiles in this repository"
+---
+
+All Dockerfiles in this repository follow a consistent set of standards to ensure reproducibility, security, and minimal image size. This page documents those standards with real examples drawn from existing images.
+
+---
+
+## Base Image Requirements
+
+### Always use digest-pinned references
+
+Every `FROM` instruction must reference the image by its `sha256` digest, not just a tag. Tags are mutable and can be silently updated; digests are immutable.
+
+```dockerfile
+# Correct — digest-pinned
+FROM ghcr.io/jauderho/golang:1.26.1-alpine3.23@sha256:912575d6ca06a3994fd2dad579e0615d58006013dda8799308d7fb5e84da43d5 AS build
+
+# Wrong — tag only, not reproducible
+FROM golang:1.26.1-alpine3.23
+```
+
+### Preferred base images by use case
+
+| Use case | Base image |
+|---|---|
+| Go build stage | `ghcr.io/jauderho/golang` |
+| Alpine final stage | `ghcr.io/jauderho/alpine` |
+| Rust build stage | `rust:<version>-alpine<version>@sha256:...` |
+| Python (Ubuntu) | `ubuntu:<version>@sha256:...` |
+
+<Note>
+  The `ghcr.io/jauderho/golang` and `ghcr.io/jauderho/alpine` images are themselves hardened base images maintained in this repository. Prefer them over upstream equivalents for Go and Alpine-based images.
+</Note>
+
+---
+
+## Multi-Stage Builds
+
+Use multi-stage builds to separate the build environment from the final runtime image. This keeps the final image small and free of build tooling.
+
+The convention used throughout this repository is a `build` stage followed by a final stage based on a minimal image. A separator comment marks the boundary between stages:
+
+```dockerfile
+FROM ghcr.io/jauderho/golang:1.26.1-alpine3.23@sha256:... AS build
+
+# ... build steps ...
+
+
+# ----------------------------------------------------------------------------
+
+
+FROM ghcr.io/jauderho/alpine:3.23.3@sha256:...
+
+# ... runtime steps, COPY from build ...
+```
+
+---
+
+## Go Application Example
+
+The `adguardhome` Dockerfile is the canonical Go example. It demonstrates digest pinning, `CGO_ENABLED=0`, the standard build flags, and the multi-stage pattern:
+
+```dockerfile
+FROM ghcr.io/jauderho/golang:1.26.1-alpine3.23@sha256:912575d6ca06a3994fd2dad579e0615d58006013dda8799308d7fb5e84da43d5 AS build
+
+WORKDIR /go/src/github.com/adguardteam/adguardhome/
+
+ARG BUILD_VERSION
+ARG ARCHIVE_URL=https://github.com/adguardteam/adguardhome/archive/
+ARG GIT_URL=https://github.com/adguardteam/adguardhome.git
+
+ENV CGO_ENABLED=0
+
+RUN test -n "${BUILD_VERSION}" \
+	&& apk update \
+	&& apk upgrade -a \
+	&& apk add --no-cache ca-certificates curl git gcc musl-dev \
+	&& update-ca-certificates \
+	&& git clone --depth 1 ${GIT_URL} --branch ${BUILD_VERSION} /go/src/github.com/adguardteam/adguardhome \
+	&& cd /go/src/github.com/adguardteam/adguardhome \
+	&& go get -u golang.org/x/crypto golang.org/x/net \
+	&& go mod tidy \
+	&& go build -v -trimpath -ldflags="-s -w -X github.com/AdguardTeam/AdGuardHome/internal/version.version=${BUILD_VERSION}" . \
+	&& cp AdGuardHome /go/bin/AdGuardHome \
+	&& go clean && go clean -cache && go clean -modcache
+
+
+# ----------------------------------------------------------------------------
+
+
+FROM ghcr.io/jauderho/alpine:3.23.3@sha256:846c7304a01ed325eb369610fb63d76afaee804431ccba8c6d113baa8d4d7fa8
+
+ARG BUILD_VERSION
+
+LABEL org.opencontainers.image.authors="Jauder Ho <jauderho@users.noreply.github.com>"
+LABEL org.opencontainers.image.url="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.documentation="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.source="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.title="jauderho/adguardhome"
+LABEL org.opencontainers.image.description="Network-wide ads & trackers blocking DNS server"
+
+RUN apk update \
+	&& apk upgrade -a \
+	&& apk --no-cache add ca-certificates libcap tzdata \
+	&& mkdir -p /opt/adguardhome/conf /opt/adguardhome/work \
+	&& chown -R nobody: /opt/adguardhome
+
+COPY --chown=nobody:nogroup --from=build /go/bin/AdGuardHome /opt/adguardhome/AdGuardHome
+
+RUN setcap 'cap_net_bind_service=+eip' /opt/adguardhome/AdGuardHome
+
+WORKDIR /opt/adguardhome/work
+
+ADD https://github.com/AdguardTeam/AdGuardHome/releases/download/${BUILD_VERSION}/AdGuardHome_frontend.tar.gz ..
+
+ENTRYPOINT ["/opt/adguardhome/AdGuardHome"]
+
+CMD [ \
+	"--no-check-update", \
+	"-c", "/opt/adguardhome/conf/AdGuardHome.yaml", \
+	"-w", "/opt/adguardhome/work" \
+]
+```
+
+### Go build flags
+
+All Go applications should be built with:
+
+| Flag | Purpose |
+|---|---|
+| `CGO_ENABLED=0` | Produces a fully static binary, no libc dependency |
+| `-trimpath` | Removes local path info from the binary |
+| `-ldflags="-s -w"` | Strips debug symbols and DWARF info, reduces binary size |
+| `-ldflags="-X ..."` | Injects the version string at build time |
+
+---
+
+## Rust Application Example
+
+The `onetun` Dockerfile shows the pattern for Rust images. The build stage uses the official `rust` Alpine image pinned by digest; the final stage uses `ghcr.io/jauderho/alpine`:
+
+```dockerfile
+FROM rust:1.94.1-alpine3.23@sha256:7f752ee8ea5deb9f4863d8c3f228a216a6466619882f09a44b9eda9617dc7770 AS build
+
+WORKDIR /usr/src/github.com/aramperes/onetun/
+
+ARG BUILD_VERSION
+ARG ARCHIVE_URL=https://github.com/aramperes/onetun/archive/
+
+RUN test -n "${BUILD_VERSION}" \
+	&& apk update \
+	&& apk upgrade -a \
+	&& apk add --no-cache ca-certificates curl lld g++ musl-dev \
+	&& curl -L "${ARCHIVE_URL}${BUILD_VERSION}.tar.gz" -o /tmp/onetun.tar.gz \
+	&& tar xzf /tmp/onetun.tar.gz --strip 1 -C /usr/src/github.com/aramperes/onetun \
+	&& RUSTFLAGS="-C link-arg=-fuse-ld=lld" cargo build --release \
+	&& strip target/release/onetun
+
+WORKDIR /config
+
+
+# ----------------------------------------------------------------------------
+
+
+FROM ghcr.io/jauderho/alpine:3.23.3@sha256:846c7304a01ed325eb369610fb63d76afaee804431ccba8c6d113baa8d4d7fa8
+
+LABEL org.opencontainers.image.authors="Jauder Ho <jauderho@users.noreply.github.com>"
+LABEL org.opencontainers.image.url="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.documentation="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.source="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.title="jauderho/onetun"
+LABEL org.opencontainers.image.description="A cross-platform, user-space WireGuard port-forwarder that requires no system network configurations."
+
+RUN apk update \
+	&& apk upgrade -a
+
+COPY --from=build /etc/ssl/certs /etc/ssl/certs
+COPY --from=build /usr/src/github.com/aramperes/onetun/target/release/onetun /usr/local/bin/onetun
+COPY --from=build /config /config
+
+USER 1000
+
+ENTRYPOINT ["/usr/local/bin/onetun"]
+CMD ["--help"]
+```
+
+---
+
+## Python Application Example
+
+For Python tools that require a richer runtime environment, `ansible` demonstrates a Ubuntu-based single-stage build with build-time dependency cleanup:
+
+```dockerfile
+FROM ubuntu:26.04@sha256:a072b64036a738e55bff8f9a9682cbb893bf20c213772effc1de8dee8df1cea9
+
+WORKDIR /ansible
+
+ARG BUILD_VERSION
+ARG DEBIAN_FRONTEND=noninteractive
+
+ENV PIP_NO_CACHE_DIR=1
+
+COPY requirements.txt .
+
+RUN apt-get update && \
+	apt-get dist-upgrade -y && \
+	build_pkgs="cargo gcc libssl-dev libkrb5-dev python3-dev git" && \
+	runtime_pkgs="python3-pip openssh-client" && \
+	DEBIAN_FRONTEND=${DEBIAN_FRONTEND} apt-get install -y --no-install-recommends ${build_pkgs} ${runtime_pkgs} && \
+	python3 -m pip install --no-cache-dir --upgrade pip --ignore-installed --break-system-packages && \
+	pip3 install --no-cache-dir -r requirements.txt --ignore-installed --break-system-packages && \
+	apt-get purge -y ${build_pkgs} && \
+	apt-get -y clean && \
+	apt-get autoremove -y --purge && \
+	rm -rf /var/lib/apt/lists/* && \
+	rm -rf /root/.cache/pip && \
+	rm -rf /root/.cargo && \
+	apt-get clean
+
+LABEL org.opencontainers.image.authors="Jauder Ho <jauderho@users.noreply.github.com>"
+LABEL org.opencontainers.image.url="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.documentation="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.source="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.title="jauderho/ansible"
+LABEL org.opencontainers.image.description="Ansible is a radically simple IT automation platform"
+
+CMD [ "ansible-playbook", "--version" ]
+```
+
+<Tip>
+  Build-only dependencies (compilers, dev headers) should be installed and then purged in the same `RUN` layer to avoid bloating the image. See `build_pkgs` / `apt-get purge` in the ansible example above.
+</Tip>
+
+---
+
+## Non-Root User Execution
+
+Run the application as a non-root user wherever possible.
+
+**Alpine images** — use `nobody` with file ownership set at copy time:
+
+```dockerfile
+RUN mkdir -p /opt/adguardhome/conf /opt/adguardhome/work \
+	&& chown -R nobody: /opt/adguardhome
+
+COPY --chown=nobody:nogroup --from=build /go/bin/AdGuardHome /opt/adguardhome/AdGuardHome
+```
+
+**Minimal images** — switch to a numeric UID directly:
+
+```dockerfile
+USER 1000
+```
+
+<Note>
+  When a process needs to bind to privileged ports (< 1024) while running as non-root, use `setcap` to grant the capability to the binary rather than running as root. See the `adguardhome` Dockerfile for an example using `cap_net_bind_service`.
+</Note>
+
+---
+
+## Required OCI Labels
+
+Every final stage must include all six of the following `org.opencontainers.image.*` labels:
+
+```dockerfile
+LABEL org.opencontainers.image.authors="Jauder Ho <jauderho@users.noreply.github.com>"
+LABEL org.opencontainers.image.url="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.documentation="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.source="https://github.com/jauderho/dockerfiles"
+LABEL org.opencontainers.image.title="jauderho/<program>"
+LABEL org.opencontainers.image.description="<short description of the tool>"
+```
+
+Replace `<program>` and the description with values appropriate for your image.
+
+---
+
+## `BUILD_VERSION` ARG
+
+The `BUILD_VERSION` build argument is the version of the upstream tool being packaged. It is passed in by the GitHub Actions workflow (via `build-args: BUILD_VERSION`) and hardcoded in the workflow's `env` section.
+
+In the Dockerfile, guard against accidental empty builds:
+
+```dockerfile
+ARG BUILD_VERSION
+
+RUN test -n "${BUILD_VERSION}" \
+    && ...
+```
+
+This causes the build to fail immediately if `BUILD_VERSION` was not supplied, preventing a silent build of an unversioned image.

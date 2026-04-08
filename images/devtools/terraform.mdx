@@ -1,0 +1,150 @@
+---
+title: "Terraform"
+description: "HashiCorp Terraform infrastructure as code tool"
+icon: "cloud"
+---
+
+[Terraform](https://github.com/hashicorp/terraform) is HashiCorp's infrastructure-as-code tool. It lets you define cloud and on-premises resources in human-readable HCL configuration files, then create, update, and version those resources through a consistent CLI workflow (`init` → `plan` → `apply`).
+
+This image is built from the Terraform source using a hardened Alpine base (`ghcr.io/jauderho/alpine`). Only the compiled `terraform` binary is copied into the final image; the Go toolchain is discarded.
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/terraform:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/terraform:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+The image sets `terraform` as its `ENTRYPOINT`, so any argument you pass goes directly to the binary.
+
+### Basic workflow
+
+Mount your `.tf` files into `/workspace` and set that as the working directory:
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/jauderho/terraform:latest \
+  init
+```
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/jauderho/terraform:latest \
+  plan
+```
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/jauderho/terraform:latest \
+  apply -auto-approve
+```
+
+### Full init/plan/apply sequence
+
+```bash
+# Init
+docker run --rm -v $(pwd):/workspace -w /workspace \
+  ghcr.io/jauderho/terraform:latest init
+
+# Plan and save to a file
+docker run --rm -v $(pwd):/workspace -w /workspace \
+  ghcr.io/jauderho/terraform:latest plan -out=tfplan
+
+# Apply the saved plan
+docker run --rm -v $(pwd):/workspace -w /workspace \
+  ghcr.io/jauderho/terraform:latest apply tfplan
+```
+
+### Check the version
+
+```bash
+docker run --rm ghcr.io/jauderho/terraform:latest version
+```
+
+## Cloud provider credentials
+
+Terraform reads credentials from environment variables. Pass them at runtime — do not bake them into images or `.tf` files.
+
+<Tabs>
+  <Tab title="AWS">
+    ```bash
+    docker run --rm \
+      -v $(pwd):/workspace \
+      -w /workspace \
+      -e AWS_ACCESS_KEY_ID \
+      -e AWS_SECRET_ACCESS_KEY \
+      -e AWS_DEFAULT_REGION \
+      ghcr.io/jauderho/terraform:latest plan
+    ```
+  </Tab>
+  <Tab title="Azure">
+    ```bash
+    docker run --rm \
+      -v $(pwd):/workspace \
+      -w /workspace \
+      -e ARM_CLIENT_ID \
+      -e ARM_CLIENT_SECRET \
+      -e ARM_SUBSCRIPTION_ID \
+      -e ARM_TENANT_ID \
+      ghcr.io/jauderho/terraform:latest plan
+    ```
+  </Tab>
+  <Tab title="GCP">
+    ```bash
+    docker run --rm \
+      -v $(pwd):/workspace \
+      -w /workspace \
+      -e GOOGLE_APPLICATION_CREDENTIALS=/workspace/sa-key.json \
+      ghcr.io/jauderho/terraform:latest plan
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Environment variables are passed by name without a value (e.g., `-e AWS_ACCESS_KEY_ID`) so Docker reads them from the host shell. This avoids embedding secrets in shell history.
+</Note>
+
+## Persisting the Terraform state and plugin cache
+
+By default, `.terraform/` and `terraform.tfstate` are written inside `/workspace`. If you mount `$(pwd):/workspace`, state is automatically persisted on the host. You can also mount a separate plugin cache to avoid re-downloading providers:
+
+```bash
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v $HOME/.terraform.d/plugin-cache:/root/.terraform.d/plugin-cache \
+  -w /workspace \
+  -e TF_PLUGIN_CACHE_DIR=/root/.terraform.d/plugin-cache \
+  ghcr.io/jauderho/terraform:latest init
+```
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine` (digest-pinned) |
+| Build base | `ghcr.io/jauderho/golang` (multi-stage) |
+| Entrypoint | `/usr/local/bin/terraform` |
+| Platforms | `linux/amd64`, `linux/arm64`, `linux/s390x` |
+| Current build version | `v1.14.8` |
+| GHCR | `ghcr.io/jauderho/terraform` |
+| Docker Hub | `docker.io/jauderho/terraform` |
+
+<Tip>
+  Pin to a specific version tag in production (e.g., `ghcr.io/jauderho/terraform:v1.14.8`) to guarantee reproducible runs.
+</Tip>

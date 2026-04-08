@@ -1,0 +1,151 @@
+---
+title: "SBOMs & Image Signing"
+description: "How to verify image signatures and access Software Bill of Materials"
+---
+
+Every image produced by this repository is signed and accompanied by an SBOM (Software Bill of Materials) and a provenance attestation. These are generated automatically during the build and stored as OCI artifacts in the same registry namespace as the image.
+
+## How Signing and SBOMs Are Generated
+
+Signing and SBOM generation are enabled in the `docker/build-push-action` step of every image workflow with two flags:
+
+```yaml
+- name: Build and push
+  uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+  with:
+    push: ${{ github.event_name != 'pull_request' }}
+    context: ${{ github.workflow }}
+    platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/arm/v7
+    build-args: |
+      BUILD_VERSION
+    sbom: true
+    provenance: true
+    cache-from: type=gha, scope=${{ github.workflow }}
+    cache-to: type=gha, scope=${{ github.workflow }}
+    labels: ${{ steps.docker_meta.outputs.labels }}
+    tags: |
+      docker.io/${{ env.REPOSITORY }}:${{ env.BUILD_VERSION }}
+      docker.io/${{ env.REPOSITORY }}:latest
+      ghcr.io/${{ env.REPOSITORY }}:${{ env.BUILD_VERSION }}
+      ghcr.io/${{ env.REPOSITORY }}:latest
+```
+
+`sbom: true` generates a CycloneDX SBOM describing all packages present in the final image. `provenance: true` generates a SLSA provenance attestation linking the image digest to the exact GitHub Actions run, repository, and commit that produced it. Both artifacts are pushed to the registry alongside the image as OCI referrers.
+
+## What an SBOM Contains
+
+An SBOM is a structured inventory of every software component inside the image — operating system packages, language runtime libraries, and the application itself. For these images it typically includes:
+
+- **OS packages** — Alpine or Debian packages with name, version, and package manager source
+- **Application binary** — the primary tool (e.g., AdGuard Home, nginx, Terraform) with its version
+- **Go/Rust/Python dependencies** — transitive runtime libraries with their versions and checksums
+
+SBOMs enable downstream users to answer questions like "is Log4Shell present in this image?" without running a full scanner, and to track license obligations across all included components.
+
+## Verifying an Image Signature
+
+Image signatures are stored as OCI referrers and can be verified with [cosign](https://github.com/sigstore/cosign).
+
+<Steps>
+  <Step title="Install cosign">
+    ```bash
+    # macOS
+    brew install cosign
+
+    # Linux (binary)
+    curl -O -L https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+    chmod +x cosign-linux-amd64
+    sudo mv cosign-linux-amd64 /usr/local/bin/cosign
+    ```
+  </Step>
+
+  <Step title="Verify the image signature">
+    Replace `<image>` and `<tag>` with the image name and version you want to verify.
+
+    ```bash
+    cosign verify \
+      ghcr.io/jauderho/<image>:<tag>
+    ```
+
+    A successful verification prints the signing certificate and the Rekor transparency log entry. A failure means the image has been tampered with after signing or was not signed by this repository's build pipeline.
+  </Step>
+</Steps>
+
+## Inspecting the SBOM
+
+<CodeGroup>
+
+```bash cosign
+# Download and display the SBOM attached to an image
+cosign download sbom ghcr.io/jauderho/<image>:<tag>
+
+# Save the SBOM to a file for further processing
+cosign download sbom ghcr.io/jauderho/<image>:<tag> > sbom.json
+```
+
+```bash oras
+# List all OCI referrers (SBOM, provenance, signature) attached to an image
+oras discover ghcr.io/jauderho/<image>:<tag>
+
+# Pull the SBOM artifact by its media type
+oras pull ghcr.io/jauderho/<image>:<tag> \
+  --media-type application/vnd.cyclonedx+json
+```
+
+</CodeGroup>
+
+The output is a CycloneDX JSON document. You can pipe it through `jq` to extract specific information:
+
+```bash
+# List all component names and versions
+cosign download sbom ghcr.io/jauderho/<image>:<tag> \
+  | jq '.components[] | {name: .name, version: .version}'
+```
+
+## Inspecting the Provenance Attestation
+
+A provenance attestation is a signed statement that records *how* and *where* an image was built. It contains the GitHub repository URL, the commit SHA, the workflow run ID, and the build parameters used.
+
+```bash
+# Download and verify the provenance attestation
+cosign verify-attestation \
+  --type slsaprovenance \
+  ghcr.io/jauderho/<image>:<tag> \
+  | jq '.payload | @base64d | fromjson'
+```
+
+The decoded payload contains a `predicate` object with fields like:
+
+```json
+{
+  "builder": {
+    "id": "https://github.com/actions/runner"
+  },
+  "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
+  "invocation": {
+    "configSource": {
+      "uri": "git+https://github.com/jauderho/dockerfiles@refs/heads/main",
+      "digest": {
+        "sha1": "<commit-sha>"
+      },
+      "entryPoint": ".github/workflows/<image>.yml"
+    }
+  }
+}
+```
+
+This lets you trace any published image back to the exact workflow run and source commit that produced it.
+
+## Why This Matters
+
+<CardGroup cols={3}>
+  <Card title="Supply Chain Integrity" icon="link">
+    Signatures prove that an image was produced by this repository's build pipeline and has not been modified in transit or in the registry.
+  </Card>
+  <Card title="Vulnerability Tracking" icon="bug">
+    An SBOM lets security teams and automated tools (e.g., Dependabot, FOSSA) query which specific package versions are present without pulling and running the image.
+  </Card>
+  <Card title="Compliance" icon="file-certificate">
+    Provenance attestations satisfy SLSA Level 1 requirements and provide the audit trail needed by frameworks such as NIST SSDF and FedRAMP for software supply chain documentation.
+  </Card>
+</CardGroup>

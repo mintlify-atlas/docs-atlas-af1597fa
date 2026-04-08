@@ -1,0 +1,66 @@
+---
+title: "testssl.sh"
+description: "Hardened Docker image for testing TLS/SSL encryption on any server and port"
+---
+
+testssl.sh is a free command-line tool that checks a server on any port for supported TLS/SSL ciphers, protocols, and cryptographic weaknesses. It relies only on standard Unix tools (`openssl`, `bash`, `curl`, `socat`) and produces human-readable output with clear pass/warn/fail indicators.
+
+Upstream project: [drwetter/testssl.sh](https://github.com/drwetter/testssl.sh)
+
+<Note>
+The Docker image is named `testssl.sh` (matching the upstream project), but the documentation page slug is `testssl` for URL compatibility.
+</Note>
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry (recommended)">
+    ```bash
+    docker pull ghcr.io/jauderho/testssl.sh:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/testssl.sh:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+The container's entrypoint is `testssl.sh`. Pass target arguments directly after the image name.
+
+### Test a host on the default HTTPS port
+
+```bash
+docker run --rm ghcr.io/jauderho/testssl.sh:latest <hostname>
+```
+
+### Test a specific host and port
+
+```bash
+docker run --rm ghcr.io/jauderho/testssl.sh:latest <hostname>:8443
+```
+
+### Show help
+
+```bash
+docker run --rm ghcr.io/jauderho/testssl.sh:latest --help
+```
+
+The image defaults to `--help` when no arguments are provided.
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine` (Alpine Linux) |
+| Runtime dependencies | `bash`, `procps`, `drill`, `coreutils`, `libidn`, `curl`, `socat`, `openssl`, `xxd` |
+| Runs as | `testssl` (dedicated non-root user) |
+| Entrypoint | `testssl.sh` |
+| Default command | `--help` |
+| Working directory | `/home/testssl` |
+
+<Tip>
+testssl.sh requires outbound network access to reach the target. If you are running behind a strict firewall, ensure the container has connectivity on the port you are testing.
+</Tip>

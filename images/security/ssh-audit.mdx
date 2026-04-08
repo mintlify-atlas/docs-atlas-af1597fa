@@ -1,0 +1,63 @@
+---
+title: "ssh-audit"
+description: "Hardened Docker image for auditing SSH server and client configurations"
+---
+
+ssh-audit is a tool for SSH server and client configuration auditing. It inspects supported authentication methods, key exchange algorithms, host key types, encryption ciphers, and MAC algorithms, and flags anything that is considered weak or deprecated.
+
+Upstream project: [jtesta/ssh-audit](https://github.com/jtesta/ssh-audit)
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry (recommended)">
+    ```bash
+    docker pull ghcr.io/jauderho/ssh-audit:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/ssh-audit:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+The container's entrypoint is `python3 ./ssh-audit.py`. Pass target arguments directly after the image name.
+
+### Audit a remote SSH server
+
+```bash
+docker run --rm ghcr.io/jauderho/ssh-audit:latest <hostname>
+```
+
+### Audit a server on a non-standard port
+
+```bash
+docker run --rm ghcr.io/jauderho/ssh-audit:latest <hostname> -p 2222
+```
+
+### Show help
+
+```bash
+docker run --rm ghcr.io/jauderho/ssh-audit:latest --help
+```
+
+## Exposed ports
+
+The image declares `EXPOSE 2222`. This is informational — ssh-audit connects **outbound** to the target you specify. You do not need to publish port 2222 unless you are using ssh-audit's built-in server listening mode.
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine` (Alpine Linux) |
+| Runtime | Python 3 |
+| Runs as | `nobody:nogroup` |
+| Entrypoint | `python3 ./ssh-audit.py` |
+| Working directory | `/home/ssh-audit` |
+
+<Note>
+The image runs as `nobody:nogroup` for least-privilege execution. No additional `--user` flag is required.
+</Note>

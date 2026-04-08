@@ -1,0 +1,151 @@
+---
+title: "Security Scanning"
+description: "Daily vulnerability scanning across all images using Trivy and Anchore"
+---
+
+All images are scanned for vulnerabilities on a daily schedule. Scan results are uploaded to GitHub Code Scanning (SARIF format), making them visible in the repository's **Security** tab alongside code-level findings.
+
+## The Scan Workflow
+
+The scan pipeline lives at `.github/workflows/scan.yml`. It runs daily at 18:00 UTC and can also be triggered manually or by changes to the workflow file itself.
+
+```yaml
+name: Scan
+on:
+  push:
+    paths:
+      - .github/workflows/scan.yml
+      - scripts/PROGRAMS
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *"
+```
+
+<Note>
+  The `concurrency` block cancels any in-progress scan run when a new one is triggered. This prevents resource waste if a manual trigger fires while a scheduled run is already underway.
+</Note>
+
+### Dynamic Image Matrix
+
+The list of images to scan is not hardcoded in the workflow. It is read from `scripts/PROGRAMS` at runtime and converted to a JSON matrix. Adding a new image to `scripts/PROGRAMS` automatically includes it in all future scans without any workflow changes.
+
+```yaml
+- name: Read list of programs from file
+  id: set-programs
+  run: |
+    echo "programs=$(cat scripts/PROGRAMS \
+      | jq -R -s -c 'split("\n") | map(select(length > 0))')" \
+      >> $GITHUB_OUTPUT
+```
+
+Each scanner job then fans out across every image in parallel (up to 25 concurrent jobs):
+
+```yaml
+strategy:
+  max-parallel: 25
+  fail-fast: false
+  matrix:
+    image: ${{fromJson(needs.prepare.outputs.programs)}}
+```
+
+`fail-fast: false` ensures that a scan failure for one image does not abort the scans of all remaining images.
+
+## Scanners
+
+<CardGroup cols={2}>
+  <Card title="Trivy" icon="shield-halved">
+    **Open-source** vulnerability scanner from Aqua Security. Scans container images against multiple vulnerability databases (NVD, GitHub Advisory, OS vendor advisories). Runs first in the pipeline.
+  </Card>
+  <Card title="Anchore / Grype" icon="magnifying-glass">
+    **Enterprise-grade** vulnerability scanner from Anchore. Uses the Grype vulnerability database. Runs after Trivy so that each scanner gets a clean result set.
+  </Card>
+</CardGroup>
+
+<Note>
+  Snyk was previously part of the scan pipeline and is still present in the workflow as commented-out configuration. It is disabled pending token management decisions but can be re-enabled without structural changes.
+</Note>
+
+### Trivy
+
+Trivy pulls each image from `ghcr.io` and scans for `HIGH` and `CRITICAL` severity vulnerabilities only. Results are written in SARIF format and uploaded to GitHub Code Scanning.
+
+```yaml
+- name: Run Trivy to check ${{ matrix.image }} Docker image for vulnerabilities
+  uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+  with:
+    image-ref: 'ghcr.io/${{ github.actor }}/${{ matrix.image }}:latest'
+    format: 'sarif'
+    output: 'trivy-${{ matrix.image }}.sarif'
+    severity: 'HIGH,CRITICAL'
+    hide-progress: false
+
+- name: Upload result to GitHub Code Scanning
+  uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+  with:
+    sarif_file: 'trivy-${{ matrix.image }}.sarif'
+```
+
+### Anchore
+
+Anchore scans the same `ghcr.io` images. The `fail-build: false` flag means a vulnerable image does not fail the workflow — results are reported as findings rather than build failures, giving maintainers time to assess and act.
+
+```yaml
+- name: Run Anchore to check ${{ matrix.image }} Docker image for vulnerabilities
+  uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+  id: anchore-scan
+  with:
+    image: 'ghcr.io/${{ github.actor }}/${{ matrix.image }}:latest'
+    fail-build: false
+    severity-cutoff: high
+
+- name: Upload result to GitHub Code Scanning
+  uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+  with:
+    sarif_file: ${{ steps.anchore-scan.outputs.sarif }}
+```
+
+## Viewing Scan Results
+
+<Steps>
+  <Step title="Open the Security tab">
+    Navigate to the repository on GitHub and click the **Security** tab, then select **Code scanning** from the left sidebar.
+  </Step>
+  <Step title="Filter by tool">
+    Use the **Tool** dropdown to filter results by `Trivy` or `Anchore` independently. Each scanner uploads its own SARIF file, so findings are attributed to their source.
+  </Step>
+  <Step title="Check the Actions tab">
+    The raw workflow logs are available under **Actions → Scan**. Each matrix job is listed individually (e.g., `trivy (adguardhome)`, `anchore (nginx)`), making it easy to drill into the output for a specific image.
+  </Step>
+</Steps>
+
+## Build Status Badges
+
+The [BUILD\_STATUS.md](https://github.com/jauderho/dockerfiles/blob/main/BUILD_STATUS.md) file tracks the current build state of every image. Each row shows a live badge linked to the corresponding workflow run:
+
+| Column | What it shows |
+|--------|--------------|
+| **Image** | Workflow badge — green (passing), red (failing), or gray (no runs) |
+| **Version** | Current `BUILD_VERSION` from Docker Hub |
+| **Pulls** | Total Docker Hub pull count |
+| **Size** | Compressed image size from Docker Hub |
+
+A red badge means the most recent workflow run failed. This could indicate a broken upstream release, a base image compatibility issue, or a newly introduced build error — not necessarily a vulnerability finding.
+
+## CVE Response
+
+Daily scanning surfaces newly disclosed CVEs before users report them. The standard response flow is:
+
+<Steps>
+  <Step title="Finding appears in Code Scanning">
+    The daily scan uploads a SARIF result for an image that was previously clean. GitHub creates a Code Scanning alert.
+  </Step>
+  <Step title="Assess severity and fixability">
+    Determine whether the CVE is in the application binary, an OS package in the image layer, or a transitive dependency. Check whether a fixed version is available upstream.
+  </Step>
+  <Step title="Trigger a rebuild">
+    If the fix is available in the upstream release or base image, update `BUILD_VERSION` in the workflow (or wait for the automated hourly check to detect it) and let the build pipeline produce a clean image.
+  </Step>
+  <Step title="Dismiss if not applicable">
+    If the CVE does not apply (e.g., the vulnerable code path is not present or reachable), dismiss the alert in GitHub Code Scanning with an explanation.
+  </Step>
+</Steps>

@@ -1,0 +1,96 @@
+---
+title: "dnscrypt-proxy"
+description: "Hardened Docker image for dnscrypt-proxy, a flexible DNS proxy with DNSCrypt and DoH support"
+---
+
+dnscrypt-proxy is a flexible DNS proxy with support for encrypted DNS protocols including DNSCrypt v2 and DNS-over-HTTPS (DoH). It can act as a local DNS resolver, filtering and encrypting queries before forwarding them upstream.
+
+<Note>
+  This image is forked from [klutchell/dnscrypt-proxy](https://github.com/klutchell/dnscrypt-proxy) with additional hardening applied.
+</Note>
+
+## Pull the image
+
+<CodeGroup>
+
+```bash GitHub Container Registry
+docker pull ghcr.io/jauderho/dnscrypt-proxy:latest
+```
+
+```bash Docker Hub
+docker pull jauderho/dnscrypt-proxy:latest
+```
+
+</CodeGroup>
+
+## Run the container
+
+<Tabs>
+  <Tab title="docker run">
+    ```bash
+    docker run -d \
+      --name dnscrypt-proxy \
+      -p 53:53/tcp \
+      -p 53:53/udp \
+      ghcr.io/jauderho/dnscrypt-proxy:latest
+    ```
+  </Tab>
+  <Tab title="docker-compose">
+    ```yaml
+    services:
+      dnscrypt-proxy:
+        image: ghcr.io/jauderho/dnscrypt-proxy:latest
+        container_name: dnscrypt-proxy
+        restart: unless-stopped
+        ports:
+          - "53:53/tcp"
+          - "53:53/udp"
+        volumes:
+          - ./dnscrypt-proxy.toml:/config/dnscrypt-proxy.toml:ro
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Port 53 requires elevated privileges or `CAP_NET_BIND_SERVICE` on Linux hosts. Map to a non-privileged port such as `5353` if port 53 is already in use.
+</Note>
+
+## Configuration
+
+The container reads `/config/dnscrypt-proxy.toml` at startup. Mount a custom TOML file to override the bundled example configuration:
+
+```bash
+docker run -d \
+  --name dnscrypt-proxy \
+  -p 53:53/tcp \
+  -p 53:53/udp \
+  -v /path/to/dnscrypt-proxy.toml:/config/dnscrypt-proxy.toml:ro \
+  ghcr.io/jauderho/dnscrypt-proxy:latest
+```
+
+## Volume mounts
+
+| Container path              | Purpose                        |
+| --------------------------- | ------------------------------ |
+| `/config/dnscrypt-proxy.toml` | Main configuration file      |
+| `/config`                   | Config directory (example files included) |
+
+## Default command
+
+```bash
+dnscrypt-proxy -config /config/dnscrypt-proxy.toml
+```
+
+## Image details
+
+| Property      | Value                                          |
+| ------------- | ---------------------------------------------- |
+| Base image    | `scratch`                                      |
+| Build base    | `ghcr.io/jauderho/golang` (Alpine)             |
+| Entrypoint    | `/usr/local/bin/dnscrypt-proxy`                |
+| Default user  | `nobody`                                       |
+| Upstream repo | [DNSCrypt/dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy) |
+
+<Tip>
+  The container runs as `nobody` (non-root) by default, improving security. Make sure any mounted configuration files are readable by the `nobody` user.
+</Tip>

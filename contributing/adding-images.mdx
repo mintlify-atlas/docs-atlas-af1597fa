@@ -1,0 +1,120 @@
+---
+title: "Adding a New Image"
+description: "Step-by-step guide to adding a new Dockerized tool to the repository"
+---
+
+This guide walks through everything required to add a new tool to the `jauderho/dockerfiles` repository. Follow each step carefully — the repository enforces consistency across all 80+ images.
+
+<Warning>
+  Do **not** copy from the `templates/` directory. It may contain outdated patterns. Use the language-specific reference examples listed below instead.
+</Warning>
+
+## Reference Examples by Language
+
+Before starting, identify which existing image most closely matches your tool's build language and use it as your reference:
+
+<CardGroup cols={3}>
+  <Card title="Go" icon="golang" href="https://github.com/jauderho/dockerfiles/tree/main/adguardhome">
+    Reference: `adguardhome`
+  </Card>
+  <Card title="Rust" icon="rust" href="https://github.com/jauderho/dockerfiles/tree/main/onetun">
+    Reference: `onetun`
+  </Card>
+  <Card title="Python" icon="python" href="https://github.com/jauderho/dockerfiles/tree/main/ansible">
+    Reference: `ruff` or `ansible`
+  </Card>
+</CardGroup>
+
+---
+
+## Steps
+
+<Steps>
+  <Step title="Create the program directory">
+    Create a new directory at the root of the repository named after the program. Place the `Dockerfile` and a `README.md` inside it:
+
+    ```
+    <program>/
+    ├── Dockerfile
+    └── README.md
+    ```
+
+    The directory name must match the program name exactly as it will be used throughout the workflow and image tags.
+  </Step>
+
+  <Step title="Write the Dockerfile">
+    Follow the [Dockerfile Standards](/contributing/dockerfile-standards) for your language. Key requirements:
+
+    - Use digest-pinned base images (`image@sha256:...`)
+    - Use multi-stage builds to minimize the final image size
+    - Run the application as a non-root user where possible
+    - Include all required OCI labels
+
+    See the [Dockerfile Standards](/contributing/dockerfile-standards) page for full details and annotated examples.
+  </Step>
+
+  <Step title="Create the GitHub Actions workflow">
+    Create `.github/workflows/<program>.yml`. Follow the [Workflow Standards](/contributing/workflow-standards) page for the full required structure.
+
+    The workflow must include:
+    - Triggers for `push` (path-filtered), `workflow_dispatch`, and a weekly `schedule`
+    - Harden Runner as the first step
+    - All actions pinned to full commit hashes
+    - `BUILD_VERSION` hardcoded in the `env` section
+    - Pushes to both `ghcr.io` and Docker Hub
+    - Multi-platform builds
+    - SBOM and provenance generation
+
+    See `.github/workflows/adguardhome.yml` as the canonical modern example.
+  </Step>
+
+  <Step title="Write the program README.md">
+    Each program directory must contain a `README.md` with standard badge markup. Replace `<program>` with the actual program name and fill in the correct `<upstream_author>` and `<upstream_repo>`:
+
+    ```markdown
+    [![Build Status](https://github.com/jauderho/dockerfiles/workflows/<program>/badge.svg)](https://github.com/jauderho/dockerfiles/actions)
+    [![Version](https://img.shields.io/docker/v/jauderho/<program>/latest)](https://github.com/<upstream_author>/<upstream_repo>/)
+    [![Docker Pulls](https://img.shields.io/docker/pulls/jauderho/<program>)](https://hub.docker.com/r/jauderho/<program>/)
+    [![Image Size](https://img.shields.io/docker/image-size/jauderho/<program>/latest)](https://hub.docker.com/r/jauderho/<program>/)
+    ```
+
+    Add usage instructions and any relevant notes below the badges.
+  </Step>
+
+  <Step title="Update the root README.md">
+    Add the new program to the "Build Status" table in the root `README.md`.
+
+    <Warning>
+      Entries must be kept in **alphabetical order**. Insert your program in the correct position — do not append to the end.
+    </Warning>
+  </Step>
+
+  <Step title="Update BUILD_STATUS.md">
+    Add the new program to the table in `BUILD_STATUS.md` as well.
+
+    <Warning>
+      Same as `README.md`: entries must remain in **alphabetical order**.
+    </Warning>
+  </Step>
+</Steps>
+
+---
+
+## Directory Structure Summary
+
+After completing all steps, the changes introduced by a new program named `<program>` should look like:
+
+```
+<program>/
+├── Dockerfile
+└── README.md
+
+.github/workflows/<program>.yml
+
+README.md              ← updated (alphabetical order)
+BUILD_STATUS.md        ← updated (alphabetical order)
+```
+
+<Note>
+  The repository currently tracks 82 programs in `scripts/PROGRAMS`. Your new program should be added there as well if the scripts directory is relevant to your build process.
+</Note>

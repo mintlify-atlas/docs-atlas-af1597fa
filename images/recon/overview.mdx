@@ -1,0 +1,47 @@
+---
+title: "Recon & Scanning Tools"
+description: "Hardened Docker images for subdomain enumeration, HTTP probing, and DNS reconnaissance"
+---
+
+This group covers hardened images for attack surface mapping, passive subdomain discovery, HTTP probing, and DNS resolution. Each image is built on a minimal Alpine base, compiled from source with `CGO_ENABLED=0` for a fully static binary, pinned to a digest for reproducible pulls, and rebuilt at least weekly to pick up upstream patches.
+
+<Warning>
+These tools are designed for authorized security research and penetration testing. Only run them against targets you own or have explicit written permission to test. Unauthorized use may violate computer fraud laws in your jurisdiction.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Amass" icon="radar" href="/images/recon/amass">
+    OWASP Amass — in-depth attack surface mapping and external asset discovery via active and passive techniques.
+  </Card>
+  <Card title="Subfinder" icon="sitemap" href="/images/recon/subfinder">
+    Fast passive subdomain enumeration tool from ProjectDiscovery that queries public sources without direct target contact.
+  </Card>
+  <Card title="httpx" icon="globe" href="/images/recon/httpx">
+    Fast and multi-purpose HTTP toolkit from ProjectDiscovery for probing hosts, detecting technologies, and extracting metadata.
+  </Card>
+  <Card title="dnsx" icon="server" href="/images/recon/dnsx">
+    Fast and multi-purpose DNS toolkit from ProjectDiscovery for bulk resolution, record enumeration, and brute forcing.
+  </Card>
+</CardGroup>
+
+## Common hardening properties
+
+All images in this group share the following properties:
+
+- **Digest-pinned base images** — Base images are referenced by `sha256` digest, preventing silent tag mutations.
+- **Static binaries** — All Go tools are compiled with `CGO_ENABLED=0` and `-trimpath -ldflags="-s -w"` for minimal, reproducible binaries.
+- **Minimal final image** — Multi-stage builds copy only the compiled binary into a hardened Alpine base; no build toolchain is present at runtime.
+- **Weekly rebuilds** — Images are rebuilt on a schedule so the base OS layer stays up to date with security patches.
+
+## Registries
+
+All images are available from two registries:
+
+| Registry | Pull command prefix |
+|---|---|
+| GitHub Container Registry (recommended) | `ghcr.io/jauderho/<image>:latest` |
+| Docker Hub | `jauderho/<image>:latest` |
+
+<Note>
+GitHub Container Registry is the primary build target and has higher pull rate limits than Docker Hub.
+</Note>

@@ -1,28 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "jauderho/dockerfiles",
+  "projectType": "infrastructure",
+  "projectName": "jauderho/dockerfiles",
+  "projectDescription": "A curated collection of hardened, security-focused Docker images for 80+ open-source tools, automatically rebuilt on upstream releases and distributed via GitHub Container Registry and Docker Hub.",
   "theme": "aspen",
-  "colors": {
-    "primary": "#040404",
-    "light": "#244455",
-    "dark": "#040404"
-  },
-  "favicon": "https://media.brand.dev/086d5cb0-9929-48e2-8259-7d23cd55d1b9.png",
-  "logo": {
-    "light": "https://media.brand.dev/1ec7fa9c-3b46-4da7-92c7-b9caf7baf99b.svg",
-    "dark": "https://media.brand.dev/1ec7fa9c-3b46-4da7-92c7-b9caf7baf99b.svg"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/jauderho/dockerfiles"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/jauderho/dockerfiles"
-    }
-  },
+  "primaryColor": "#040404",
+  "lightColor": "#244455",
+  "darkColor": null,
   "navigation": {
     "tabs": [
       {
@@ -112,5 +95,29 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "80+ curated Docker images for popular open-source tools",
+    "Automated rebuilds triggered one hour after upstream releases via GitHub Actions",
+    "Multi-stage builds with minimal final image sizes",
+    "Hardened binaries and non-root user execution",
+    "Daily security scanning with Trivy, Snyk, and Anchore",
+    "Image signing and SBOM (Software Bill of Materials) generation",
+    "Pinned base image digests for reproducible builds",
+    "Multi-architecture support (amd64, arm64, and more)",
+    "Available on both GitHub Container Registry (ghcr.io) and Docker Hub",
+    "OpenSSF Security Scorecard compliance with Allstar enforcement"
+  ],
+  "publicApiSurface": [
+    "ghcr.io/jauderho/<image>:latest",
+    "docker.io/jauderho/<image>:latest",
+    "ghcr.io/jauderho/<image>:<version>",
+    "docker pull jauderho/adguardhome",
+    "docker pull jauderho/nginx",
+    "docker pull jauderho/tailscale",
+    "docker pull jauderho/terraform",
+    "docker pull jauderho/unbound",
+    "docker pull jauderho/trufflehog",
+    "docker pull jauderho/ansible"
+  ]
 }

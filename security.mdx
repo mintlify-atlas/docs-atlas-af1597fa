@@ -1,0 +1,252 @@
+---
+title: "Security Model"
+description: "How images are hardened, scanned, and signed for supply chain integrity"
+---
+
+Every image in this project applies multiple layers of defense — from how base images are referenced in Dockerfiles, to how compiled binaries are hardened, to how the final image is scanned, signed, and delivered. This page documents each layer.
+
+<AccordionGroup>
+
+<Accordion title="Digest-pinned base images" icon="lock">
+
+Every `FROM` line in every Dockerfile references the base image by its SHA-256 digest rather than a mutable tag:
+
+```dockerfile
+FROM ghcr.io/jauderho/alpine:3.23.3@sha256:846c7304a01ed325eb369610fb63d76afaee804431ccba8c6d113baa8d4d7fa8
+```
+
+A mutable tag like `alpine:3.23.3` can be silently updated by the upstream registry to point at a different image. A digest reference is immutable — `@sha256:846c7...` will always resolve to the exact same set of layers, regardless of what the tag currently points to.
+
+This prevents a class of supply chain attack where a compromised or overwritten upstream image is pulled into a downstream build without the builder's knowledge.
+
+The same discipline applies to GitHub Actions — all `uses:` steps are pinned to a full commit hash, not a semantic version tag:
+
+```yaml
+uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+```
+
+The inline comment preserves the human-readable version for maintainability, while the hash enforces reproducibility.
+
+</Accordion>
+
+<Accordion title="Binary hardening flags" icon="shield-halved">
+
+For images built from source (such as nginx, OpenSSL, and PCRE), the compiler and linker are invoked with a comprehensive set of hardening flags. The following flags come directly from the nginx Dockerfile:
+
+**Compiler flags (`--with-cc-opt`)**
+
+```text
+-O3
+-march=native
+-pipe
+-flto=auto
+-fomit-frame-pointer
+-fstack-protector-strong
+-fstack-clash-protection
+--param=ssp-buffer-size=4
+-grecord-gcc-switches
+-fPIE -pie
+-fno-plt
+-fno-semantic-interposition
+-Wformat-security
+-Wno-error=strict-aliasing
+-Wno-error=vla-parameter
+-Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=3
+```
+
+**Linker flags (`--with-ld-opt`)**
+
+```text
+-fuse-ld=mold
+-lmimalloc
+-O3
+-march=native
+-flto=auto
+-fPIE
+-Wl,-pie
+-Wl,-z,relro
+-Wl,-z,now
+-Wl,-z,noexecstack
+```
+
+What these flags do:
+
+| Flag | Effect |
+|---|---|
+| `-fstack-protector-strong` | Inserts stack canaries to detect and abort stack buffer overflows |
+| `-D_FORTIFY_SOURCE=3` | Enables compile-time and runtime checks on standard library functions (buffer overreads, format strings) |
+| `-fstack-clash-protection` | Mitigates stack clash attacks by probing each stack page on allocation |
+| `-fPIE -pie` | Produces position-independent executables, enabling ASLR at the OS level |
+| `-Wl,-z,relro` | Marks the GOT read-only after dynamic linking (partial RELRO) |
+| `-Wl,-z,now` | Forces all symbols to be resolved at load time, enabling full RELRO |
+| `-Wl,-z,noexecstack` | Marks the stack as non-executable, blocking shellcode injection |
+| `-fno-plt` | Eliminates PLT trampolines to reduce attack surface from lazy binding |
+
+The same hardening flags are applied to OpenSSL when it is built as a dependency, with additional options to disable deprecated and weak cryptographic primitives:
+
+```text
+enable-quic enable-tfo enable-ktls enable-pie enable-ec_nistp_64_gcc_128
+threads no-tls-deprecated-ec no-ssl no-tls1 no-tls1_1
+no-weak-ssl-ciphers no-deprecated no-comp
+-DOPENSSL_TLS_SECURITY_LEVEL=3
+```
+
+</Accordion>
+
+<Accordion title="Non-root user execution" icon="user-slash">
+
+Whenever possible, images run the application process as a non-root user. The nginx Dockerfile creates a dedicated system user and group at build time:
+
+```dockerfile
+addgroup -S nginx && \
+adduser -D -S -h /var/cache/nginx -s /sbin/nologin -G nginx nginx
+```
+
+The adguardhome Dockerfile transfers ownership of the application directory and its data paths to `nobody`:
+
+```dockerfile
+RUN mkdir -p /opt/adguardhome/conf /opt/adguardhome/work \
+    && chown -R nobody: /opt/adguardhome
+```
+
+Running as a non-root user limits the blast radius of a container escape or application compromise. Even if an attacker gains code execution inside the container, they do not hold root privileges.
+
+When a binary needs privileged network capabilities (such as binding to port 53), Linux capabilities are granted explicitly and narrowly rather than running as root:
+
+```dockerfile
+RUN setcap 'cap_net_bind_service=+eip' /opt/adguardhome/AdGuardHome
+```
+
+</Accordion>
+
+<Accordion title="Multi-stage builds" icon="layer-group">
+
+All images use multi-stage Dockerfiles. The build stage contains compilers, build tools, source archives, and intermediate object files. The final stage starts from a clean base image and copies only the compiled binary and its runtime dependencies.
+
+A simplified view of the pattern:
+
+```dockerfile
+# Stage 1: build
+FROM ghcr.io/jauderho/golang:1.26.1-alpine3.23@sha256:912575d... AS build
+
+RUN git clone ... && go build -trimpath -ldflags="-s -w" .
+
+# Stage 2: final image
+FROM ghcr.io/jauderho/alpine:3.23.3@sha256:846c7304...
+
+COPY --from=build /go/bin/AdGuardHome /opt/adguardhome/AdGuardHome
+```
+
+Build tools (`gcc`, `make`, `go`, `git`, source tarballs, object files) are never present in the shipped image. This reduces the attack surface and keeps images small.
+
+Go binaries are built with `-trimpath` to strip build-system paths from the binary, and `-ldflags="-s -w"` to remove the symbol table and DWARF debug info, further reducing binary size.
+
+</Accordion>
+
+<Accordion title="Daily CVE scanning" icon="bug">
+
+Every image is scanned daily for known vulnerabilities using two independent scanners:
+
+- **Trivy** — scans OS packages and language-level dependencies using multiple vulnerability databases
+- **Anchore / Grype** — scans using Anchore's vulnerability database with policy gates
+
+The scan workflow runs on a schedule and results are visible in GitHub Actions. See the [scan workflow](https://github.com/jauderho/dockerfiles/blob/main/.github/workflows/scan.yml) for the full configuration.
+
+Using two independent scanners reduces the chance that a CVE present in one database but not another goes undetected.
+
+</Accordion>
+
+<Accordion title="Image signing with cosign" icon="signature">
+
+Every image is signed using [cosign](https://github.com/sigstore/cosign) in keyless mode via GitHub Actions OIDC. The signature is stored in the registry alongside the image.
+
+**Verifying a signature**
+
+Install cosign, then run:
+
+```bash
+cosign verify ghcr.io/jauderho/nginx:latest \
+  --certificate-identity-regexp="https://github.com/jauderho/dockerfiles" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+```
+
+A successful output shows the verified certificate chain and the GitHub Actions workflow that produced the image. A failure indicates the image was not signed by this project's CI pipeline and should not be trusted.
+
+Keyless signing means there is no long-lived private key to manage or rotate. The signature is bound to the GitHub Actions identity via Sigstore's transparency log (Rekor), providing a publicly auditable record of every signing event.
+
+</Accordion>
+
+<Accordion title="SBOM generation" icon="file-lines">
+
+Every build produces a Software Bill of Materials (SBOM) attached to the image in the registry. SBOMs are generated automatically by the Docker Build Push Action with `sbom: true` in the workflow:
+
+```yaml
+- name: Build and push
+  uses: docker/build-push-action@...
+  with:
+    sbom: true
+    provenance: true
+```
+
+An SBOM lists every package and dependency present in the image, including OS packages, language runtime dependencies, and their versions. This enables:
+
+- Rapid impact assessment when a new CVE is disclosed (you can check whether an affected package is present without pulling and scanning the image)
+- Compliance with supply chain requirements that mandate a bill of materials
+
+</Accordion>
+
+<Accordion title="OpenSSF Security Scorecard" icon="chart-bar">
+
+The repository is continuously evaluated by the [OpenSSF Security Scorecard](https://securityscorecards.dev/viewer/?uri=github.com/jauderho/dockerfiles), which checks for security best practices across a range of categories including:
+
+- Branch protection
+- Code review practices
+- Dependency pinning (the digest-based `FROM` and `uses:` patterns described above)
+- CI/CD security (secrets handling, permissions)
+- Vulnerability disclosure policy
+
+Scorecard results are public and linked from the repository README badge.
+
+</Accordion>
+
+<Accordion title="Allstar policy enforcement" icon="gavel">
+
+The repository uses [Allstar](https://github.com/ossf/allstar) to enforce OpenSSF security policies at the repository level. Allstar continuously monitors the repository configuration and raises issues or takes automated action when policies are violated.
+
+Enforced policies include branch protection, binary artifacts, and security file requirements. This provides a continuous compliance check on top of the manual practices described above.
+
+</Accordion>
+
+<Accordion title="Harden Runner in GitHub Actions" icon="person-running">
+
+All build and scan workflows use [Step Security's Harden Runner](https://github.com/step-security/harden-runner) as the first step:
+
+```yaml
+- name: Harden Runner
+  uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d # v2.16.1
+  with:
+    egress-policy: audit
+    disable-telemetry: false
+    allowed-endpoints:
+      api.github.com:443
+      ghcr.io:443
+      github.com:443
+      registry-1.docker.io:443
+      dl-cdn.alpinelinux.org:443
+      proxy.golang.org:443
+      sum.golang.org:443
+```
+
+Harden Runner monitors and restricts outbound network traffic from the runner. The `allowed-endpoints` list explicitly permits only the hosts the workflow legitimately needs to contact. Any connection attempt to an unlisted host is flagged, which would reveal a dependency confusion attack, a compromised action, or exfiltration of secrets.
+
+This prevents the build environment itself from being used as an attack vector even if a dependency or third-party action is compromised.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Reporting a vulnerability
+
+If you discover a vulnerability in one of these images or in the build pipeline, please use the GitHub [vulnerability reporting function](https://github.com/jauderho/dockerfiles/security/advisories/new) to open a private security advisory.
+
+Do not disclose the vulnerability publicly until a fix or mitigation has been released. Once the issue is resolved, coordinated public disclosure is welcome. See [SECURITY.md](https://github.com/jauderho/dockerfiles/blob/main/SECURITY.md) for the full policy.

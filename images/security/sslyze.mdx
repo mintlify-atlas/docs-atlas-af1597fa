@@ -1,0 +1,66 @@
+---
+title: "sslyze"
+description: "Hardened Docker image for fast TLS/SSL scanning and analysis"
+---
+
+SSLyze is a fast and powerful SSL/TLS scanning library. It connects to a target server and inspects its TLS configuration, including certificate chain validation, supported protocol versions, cipher suites, and exposure to known vulnerabilities such as ROBOT, Heartbleed, and CCS injection.
+
+Upstream project: [nabla-c0d3/sslyze](https://github.com/nabla-c0d3/sslyze)
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry (recommended)">
+    ```bash
+    docker pull ghcr.io/jauderho/sslyze:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/sslyze:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+The container's entrypoint is `sslyze`. Pass arguments directly after the image name.
+
+### Scan a host
+
+```bash
+docker run --rm ghcr.io/jauderho/sslyze:latest <hostname>
+```
+
+### Scan a host on a specific port
+
+```bash
+docker run --rm ghcr.io/jauderho/sslyze:latest <hostname>:8443
+```
+
+### Show help
+
+```bash
+docker run --rm ghcr.io/jauderho/sslyze:latest
+```
+
+The image defaults to `-h` when no arguments are provided.
+
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PIP_NO_CACHE_DIR` | `1` | Disables pip's download cache during the build. Has no effect at runtime. |
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ubuntu:26.04` |
+| Runtime | Python 3 (pip-installed `sslyze` package) |
+| Entrypoint | `sslyze` |
+| Default command | `-h` |
+
+<Note>
+Dependencies are installed from a pinned `requirements.txt` generated via Pipfile. This ensures the exact same dependency versions are used in every build.
+</Note>

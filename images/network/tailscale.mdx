@@ -1,0 +1,108 @@
+---
+title: "Tailscale"
+description: "Hardened Docker image for Tailscale, a WireGuard-based zero-config VPN"
+---
+
+Tailscale is a zero-config VPN built on WireGuard. It connects your devices into a secure private network, with support for subnet routing, exit nodes, and MagicDNS.
+
+## Pull the image
+
+<CodeGroup>
+
+```bash GitHub Container Registry
+docker pull ghcr.io/jauderho/tailscale:latest
+```
+
+```bash Docker Hub
+docker pull jauderho/tailscale:latest
+```
+
+</CodeGroup>
+
+## Run the container
+
+<Warning>
+  Tailscale requires the `NET_ADMIN` capability and access to the `/dev/net/tun` device to create a virtual network interface. You must also enable IP forwarding via `sysctls`.
+</Warning>
+
+<Tabs>
+  <Tab title="docker-compose (recommended)">
+    ```yaml
+    services:
+      tailscale:
+        image: ghcr.io/jauderho/tailscale:latest
+        container_name: tailscale
+        restart: unless-stopped
+        command:
+          - tailscaled
+        cap_add:
+          - NET_ADMIN
+        sysctls:
+          - net.ipv4.ip_forward=1
+          - net.ipv4.conf.all.src_valid_mark=1
+          - net.ipv6.conf.all.forwarding=1
+        volumes:
+          - ./config:/var/lib/tailscale
+          - /dev/net/tun:/dev/net/tun
+    ```
+  </Tab>
+  <Tab title="docker run">
+    ```bash
+    docker run -d \
+      --name tailscale \
+      --cap-add NET_ADMIN \
+      --sysctl net.ipv4.ip_forward=1 \
+      --sysctl net.ipv4.conf.all.src_valid_mark=1 \
+      --sysctl net.ipv6.conf.all.forwarding=1 \
+      --device /dev/net/tun:/dev/net/tun \
+      -v ./config:/var/lib/tailscale \
+      ghcr.io/jauderho/tailscale:latest tailscaled
+    ```
+  </Tab>
+</Tabs>
+
+## Environment variables
+
+Store these in a `.env` file alongside your `docker-compose.yml`:
+
+```bash
+HOSTNAME=<custom-hostname>
+ACCEPTDNS=true
+ACCEPTROUTES=true
+ADVERTISEROUTES=<subnet-cidr>
+AUTHKEY=<your-auth-key>
+```
+
+## Volume mounts
+
+| Container path         | Purpose                                  |
+| ---------------------- | ---------------------------------------- |
+| `/var/lib/tailscale`   | Persistent state (auth keys, node keys)  |
+| `/dev/net/tun`         | TUN device for WireGuard tunnels         |
+
+## Checking status
+
+After the container starts, check the Tailscale connection status:
+
+```bash
+docker exec tailscale tailscale status
+```
+
+## Required capabilities
+
+| Capability / sysctl                          | Reason                                              |
+| -------------------------------------------- | --------------------------------------------------- |
+| `CAP_NET_ADMIN`                              | Create and manage the WireGuard tunnel interface    |
+| `net.ipv4.ip_forward=1`                      | Forward packets between interfaces (subnet routing) |
+| `net.ipv4.conf.all.src_valid_mark=1`         | Required by WireGuard for policy routing            |
+| `net.ipv6.conf.all.forwarding=1`             | IPv6 packet forwarding                              |
+| `/dev/net/tun`                               | TUN device for the virtual network interface        |
+
+## Image details
+
+| Property      | Value                                         |
+| ------------- | --------------------------------------------- |
+| Base image    | `ghcr.io/jauderho/alpine`                     |
+| Build base    | `ghcr.io/jauderho/golang` (Alpine)            |
+| Default cmd   | `tailscaled`                                  |
+| Upstream repo | [tailscale/tailscale](https://github.com/tailscale/tailscale) |

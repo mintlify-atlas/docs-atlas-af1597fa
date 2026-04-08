@@ -1,0 +1,217 @@
+---
+title: "nginx (hardened)"
+description: "nginx compiled from source with OpenSSL, PCRE2, Brotli compression, and aggressive security hardening flags"
+---
+
+This is the primary web server image in the collection. Rather than shipping a distribution-packaged nginx binary, it compiles nginx entirely from source — pulling in a custom OpenSSL build, Cloudflare's `zlib` fork, PCRE2 with JIT, and the `ngx_brotli` module — all compiled with an aggressive set of security hardening flags.
+
+## Pull
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/nginx:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/nginx:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Run
+
+```bash
+docker run -d \
+  --name nginx \
+  -p 80:80 \
+  -p 443:443 \
+  ghcr.io/jauderho/nginx:latest
+```
+
+To serve your own static files, mount a directory over the default HTML root:
+
+```bash
+docker run -d \
+  --name nginx \
+  -p 80:80 \
+  -p 443:443 \
+  -v /path/to/your/site:/usr/share/nginx/html:ro \
+  -v /path/to/nginx.conf:/etc/nginx/nginx.conf:ro \
+  ghcr.io/jauderho/nginx:latest
+```
+
+## Exposed ports
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| 80 | TCP | HTTP |
+| 443 | TCP | HTTPS / HTTP/2 / HTTP/3 (QUIC over TLS) |
+
+## What makes this build different
+
+### Compiled from source
+
+The build downloads the nginx source tarball, OpenSSL source, PCRE2 source, Cloudflare zlib, and `ngx_brotli` — then compiles everything together. No distro-packaged libraries are used for the core stack.
+
+**Build versions** (from the CI workflow):
+- nginx: `1.29.8`
+- OpenSSL: `3.6.2`
+- PCRE2: `10.47`
+
+### Applied patches
+
+Three patches are applied to the nginx source before compilation:
+
+- **Dynamic TLS records** — adjusts TLS record sizes dynamically based on connection state for better throughput.
+- **ChaCha20 reprioritization** — prefers ChaCha20-Poly1305 over AES-GCM on clients that do not have hardware AES acceleration.
+- **Gzip 207 status** — corrects gzip behaviour on HTTP 207 (Multi-Status) responses.
+
+### Enabled modules
+
+<CodeGroup>
+
+```text HTTP modules
+--with-http_ssl_module
+--with-http_realip_module
+--with-http_v2_module
+--with-http_v3_module
+--with-http_gunzip_module
+--with-http_gzip_static_module
+--with-http_secure_link_module
+--with-http_slice_module
+--with-http_auth_request_module
+--add-module=/tmp/ngx_brotli
+```
+
+```text Stream modules
+--with-stream
+--with-stream_ssl_module
+--with-stream_ssl_preread_module
+--with-stream_realip_module
+```
+
+```text Performance
+--with-file-aio
+--with-threads
+--with-pcre-jit
+```
+
+</CodeGroup>
+
+Several default modules are deliberately disabled to reduce the attack surface:
+
+```text
+--without-http_autoindex_module
+--without-http_ssi_module
+--without-http_uwsgi_module
+--without-http_scgi_module
+--without-http_empty_gif_module
+--without-http_browser_module
+--without-http_split_clients_module
+```
+
+### Compiler hardening flags
+
+```bash
+--with-cc-opt='-O3 -march=native -pipe -flto=auto \
+  -fomit-frame-pointer \
+  -fstack-protector-strong -fstack-clash-protection \
+  --param=ssp-buffer-size=4 \
+  -grecord-gcc-switches \
+  -fPIE -pie -fno-plt \
+  -fno-semantic-interposition \
+  -Wformat-security \
+  -Wno-error=strict-aliasing \
+  -Wno-error=vla-parameter \
+  -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=3'
+```
+
+### Linker flags
+
+```bash
+--with-ld-opt='-fuse-ld=mold -lmimalloc \
+  -O3 -march=native -flto=auto \
+  -fPIE -Wl,-pie \
+  -Wl,-z,relro -Wl,-z,now \
+  -Wl,-z,noexecstack'
+```
+
+Notable linker choices:
+- **mold** — a fast, modern linker used in place of GNU ld.
+- **mimalloc** — Microsoft's high-performance allocator linked in to replace the default system allocator.
+- **RELRO + BIND_NOW** — full read-only relocations and immediate symbol binding harden against GOT/PLT attacks.
+- **noexecstack** — marks the stack as non-executable.
+
+### OpenSSL hardening options
+
+```bash
+--with-openssl-opt="enable-quic enable-tfo enable-ktls enable-pie \
+  enable-ec_nistp_64_gcc_128 \
+  threads \
+  no-tls-deprecated-ec \
+  no-ssl no-tls1 no-tls1_1 \
+  no-weak-ssl-ciphers no-deprecated \
+  no-comp no-tests \
+  -O3 -march=native -pipe -flto=auto \
+  -DOPENSSL_TLS_SECURITY_LEVEL=3"
+```
+
+Key points:
+- SSLv3, TLS 1.0, and TLS 1.1 are compiled out entirely.
+- Weak ciphers and deprecated APIs are removed at build time.
+- `OPENSSL_TLS_SECURITY_LEVEL=3` is set, which enforces 128-bit minimum security strength.
+- QUIC, TCP Fast Open (TFO), and kernel TLS (kTLS) are enabled.
+
+## nginx.conf
+
+The image ships a minimal `nginx.conf`. Logs are directed to stdout/stderr so they surface correctly in `docker logs`:
+
+```nginx
+worker_processes  1;
+
+error_log stderr notice;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    access_log /dev/stdout;
+
+    sendfile        on;
+    keepalive_timeout  65;
+
+    server {
+        listen       80;
+        server_name  localhost;
+
+        location / {
+            root   html;
+            index  index.html index.htm;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   html;
+        }
+    }
+}
+```
+
+Override this by mounting your own configuration file at `/etc/nginx/nginx.conf`.
+
+## Runtime details
+
+- Runs as the dedicated `nginx` user (non-root, no login shell).
+- Process started with `nginx -g 'daemon off;'` so Docker receives signals correctly.
+- Platforms: `linux/amd64`, `linux/arm64`.
+- Built weekly via GitHub Actions with the latest patch versions of nginx, OpenSSL, and PCRE2.
+
+<Tip>
+  This image includes HTTP/3 via `--with-http_v3_module`. To enable QUIC, configure nginx to listen on UDP port 443 and add the `quic` parameter: `listen 443 quic reuseport;`.
+</Tip>

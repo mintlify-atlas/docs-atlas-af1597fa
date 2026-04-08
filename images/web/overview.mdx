@@ -1,0 +1,70 @@
+---
+title: "Web Servers"
+description: "Hardened nginx variants with security-optimized compilation flags"
+---
+
+This group provides four nginx-based images, each built from source with hardened compiler flags, custom OpenSSL, Cloudflare zlib, PCRE2, and Brotli compression. Pick the variant that best fits your security posture and feature requirements.
+
+<CardGroup cols={2}>
+  <Card title="nginx (hardened)" icon="server" href="/images/web/nginx">
+    The primary image. Compiled from source on Alpine with OpenSSL, PCRE2, Brotli,
+    HTTP/2, HTTP/3, and aggressive security hardening flags. Recommended for most use cases.
+  </Card>
+  <Card title="nginx (distroless)" icon="shield" href="/images/web/nginx-distroless">
+    nginx on a distroless Debian base — no shell, no package manager. Smallest
+    possible attack surface for production deployments where debuggability is not a concern.
+  </Card>
+  <Card title="nginx QUIC/HTTP3" icon="bolt" href="/images/web/nginx-quic">
+    Experimental nginx build with native QUIC and HTTP/3 support via BoringSSL.
+    Built from the upstream nginx-quic Mercurial branch.
+  </Card>
+  <Card title="freenginx" icon="code-fork" href="/images/web/freenginx">
+    Identical hardening stack applied to freenginx — the community fork of nginx
+    that operates independently of F5/NGINX Inc. control.
+  </Card>
+</CardGroup>
+
+## Variant comparison
+
+| Feature | nginx | nginx-distroless | nginx-quic | freenginx |
+|---|---|---|---|---|
+| Base image | Alpine (hardened) | Distroless Debian | Alpine (hardened) | Alpine (hardened) |
+| Compiled from source | Yes | No (official binary) | Yes | Yes |
+| Custom OpenSSL | Yes | No | BoringSSL | Yes |
+| Brotli compression | Yes | No | No | Yes |
+| HTTP/2 | Yes | Yes | Yes | Yes |
+| HTTP/3 / QUIC | Yes | No | Yes | No |
+| TCP stream proxy | Yes | No | No | Yes |
+| Shell in image | Yes (Alpine) | No | Yes (Alpine) | Yes (Alpine) |
+| Recommended | **Yes** | Cautiously | Legacy only | Yes |
+
+<Warning>
+  The `nginx-quic` image is based on the upstream nginx-quic Mercurial branch, which is no longer actively maintained.
+  Use the standard `nginx` image instead — it already includes HTTP/3 support via `--with-http_v3_module`.
+</Warning>
+
+<Note>
+  The `nginx-distroless` image is based on the official nginx Debian binary rather than a source build. Its distroless base image has historically lagged on CVE fixes. The hardened `nginx` image is preferred for security-sensitive environments.
+</Note>
+
+## Common hardening flags
+
+All source-built images (`nginx`, `nginx-quic`, `freenginx`) share the same compiler and linker hardening philosophy:
+
+```bash
+# Compiler flags
+-O3 -march=native -pipe -flto=auto
+-fomit-frame-pointer
+-fstack-protector-strong -fstack-clash-protection
+--param=ssp-buffer-size=4
+-fPIE -pie -fno-plt
+-fno-semantic-interposition
+-Wformat-security
+-Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=3
+
+# Linker flags
+-fuse-ld=mold -lmimalloc
+-Wl,-pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+```
+
+OpenSSL is also compiled with security-focused options: legacy protocol versions (SSLv3, TLS 1.0, TLS 1.1) disabled, weak ciphers removed, and `OPENSSL_TLS_SECURITY_LEVEL=3` enforced.

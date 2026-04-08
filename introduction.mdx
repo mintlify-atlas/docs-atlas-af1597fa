@@ -1,0 +1,68 @@
+---
+title: "Introduction"
+description: "Hardened, security-focused Docker images for 80+ open-source tools — automatically rebuilt on upstream releases."
+---
+
+## What is jauderho/dockerfiles?
+
+This repository is a curated collection of production-ready Docker images for popular open-source tools. Every image is built with security and minimal footprint in mind: multi-stage builds, non-root execution, pinned digest references, and daily vulnerability scanning.
+
+Images are available on both [GitHub Container Registry](https://github.com/users/jauderho/packages?repo_name=dockerfiles) (recommended) and [Docker Hub](https://hub.docker.com/u/jauderho/).
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Pull your first hardened image and get running in minutes
+  </Card>
+  <Card title="Security Model" icon="shield-halved" href="/security">
+    Learn how images are hardened, scanned, and signed
+  </Card>
+  <Card title="Image Catalog" icon="box-open" href="/images/security/overview">
+    Browse all 80+ available images by category
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/contributing/adding-images">
+    Add a new image or improve an existing one
+  </Card>
+</CardGroup>
+
+## Key principles
+
+**Security first** — All images use digest-pinned base images to prevent supply-chain attacks. Binaries are compiled with hardening flags (`-fstack-protector-strong`, `-D_FORTIFY_SOURCE=3`, full RELRO). Applications run as non-root users wherever possible.
+
+**Always up to date** — Upstream repositories are monitored via GitHub Actions. New images are built and pushed automatically within an hour of a new upstream release being tagged.
+
+**Minimal attack surface** — Multi-stage builds ensure only the compiled binary (and its runtime dependencies) land in the final image. Build tools, source code, and caches are left behind.
+
+**Verified supply chain** — Images are signed using cosign and include an SBOM (Software Bill of Materials). Daily scans run against Trivy and Anchore to catch newly disclosed CVEs.
+
+## Available image categories
+
+<CardGroup cols={2}>
+  <Card title="Security Tools" icon="lock" href="/images/security/overview">
+    ssh-audit, sslyze, testssl.sh, trufflehog, docker-bench-security
+  </Card>
+  <Card title="Network & DNS" icon="network-wired" href="/images/network/overview">
+    Unbound, CoreDNS, dnscrypt-proxy, Tailscale, Nebula
+  </Card>
+  <Card title="Web Servers" icon="server" href="/images/web/overview">
+    nginx (hardened), nginx-distroless, nginx-quic, freenginx
+  </Card>
+  <Card title="Developer Tools" icon="wrench" href="/images/devtools/overview">
+    Terraform, OpenTofu, Ansible, rclone
+  </Card>
+  <Card title="Recon & Scanning" icon="magnifying-glass" href="/images/recon/overview">
+    Amass, subfinder, httpx, dnsx
+  </Card>
+</CardGroup>
+
+## Registries
+
+All images are pushed to two registries simultaneously:
+
+| Registry | Pull command |
+|---|---|
+| GitHub Container Registry (recommended) | `docker pull ghcr.io/jauderho/<image>:latest` |
+| Docker Hub | `docker pull jauderho/<image>:latest` |
+
+<Note>
+GitHub Container Registry is recommended as it has higher rate limits and is the primary build target.
+</Note>

@@ -1,0 +1,143 @@
+---
+title: "rclone"
+description: "rclone — rsync for cloud storage"
+icon: "arrows-rotate"
+---
+
+[rclone](https://github.com/rclone/rclone) is a command-line program to manage files on cloud storage. It supports over 40 storage providers — including Amazon S3, Google Cloud Storage, Azure Blob Storage, Backblaze B2, Dropbox, SFTP, and many more — with a unified rsync-like interface.
+
+This image is built from the rclone source using a hardened Alpine runtime base. A dedicated `rclone` user (UID/GID 1009) and FUSE support are included so you can mount remote storage as a local filesystem inside the container.
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/rclone:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/rclone:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Configuration
+
+rclone stores provider credentials in a config file (default location: `~/.config/rclone/rclone.conf`). Generate it once on the host with `rclone config`, then mount it into the container at runtime.
+
+### Create a config on the host
+
+```bash
+# Run interactively to configure a remote
+docker run --rm -it \
+  -v $HOME/.config/rclone:/config/rclone \
+  ghcr.io/jauderho/rclone:latest \
+  config
+```
+
+<Note>
+  The interactive `config` wizard walks you through adding remotes. Credentials are saved to `rclone.conf` in the mounted directory on the host.
+</Note>
+
+### Mount the config for non-interactive runs
+
+```bash
+docker run --rm \
+  -v $HOME/.config/rclone:/config/rclone:ro \
+  ghcr.io/jauderho/rclone:latest \
+  listremotes
+```
+
+## Usage
+
+### List files on a remote
+
+```bash
+docker run --rm \
+  -v $HOME/.config/rclone:/config/rclone:ro \
+  ghcr.io/jauderho/rclone:latest \
+  ls remote:bucket-name
+```
+
+### Copy files to a remote
+
+```bash
+docker run --rm \
+  -v $HOME/.config/rclone:/config/rclone:ro \
+  -v $(pwd)/data:/data:ro \
+  ghcr.io/jauderho/rclone:latest \
+  copy /data remote:bucket-name/backup
+```
+
+### Sync a local directory to a remote
+
+```bash
+docker run --rm \
+  -v $HOME/.config/rclone:/config/rclone:ro \
+  -v $(pwd)/data:/data:ro \
+  ghcr.io/jauderho/rclone:latest \
+  sync /data remote:bucket-name/backup
+```
+
+<Warning>
+  `rclone sync` makes the destination identical to the source and **deletes files at the destination that are not in the source**. Use `rclone copy` if you only want to add or update files without deleting anything.
+</Warning>
+
+### Dry run (no changes)
+
+```bash
+docker run --rm \
+  -v $HOME/.config/rclone:/config/rclone:ro \
+  -v $(pwd)/data:/data:ro \
+  ghcr.io/jauderho/rclone:latest \
+  sync /data remote:bucket-name/backup --dry-run
+```
+
+### Check differences between source and destination
+
+```bash
+docker run --rm \
+  -v $HOME/.config/rclone:/config/rclone:ro \
+  -v $(pwd)/data:/data:ro \
+  ghcr.io/jauderho/rclone:latest \
+  check /data remote:bucket-name/backup
+```
+
+## Passing credentials via environment variables
+
+Some providers support credential injection via environment variables, which avoids writing a config file:
+
+```bash
+docker run --rm \
+  -v $(pwd)/data:/data:ro \
+  -e RCLONE_CONFIG_S3_TYPE=s3 \
+  -e RCLONE_CONFIG_S3_PROVIDER=AWS \
+  -e RCLONE_CONFIG_S3_ACCESS_KEY_ID \
+  -e RCLONE_CONFIG_S3_SECRET_ACCESS_KEY \
+  -e RCLONE_CONFIG_S3_REGION=us-east-1 \
+  ghcr.io/jauderho/rclone:latest \
+  ls S3:my-bucket
+```
+
+<Tip>
+  Environment variable names follow the pattern `RCLONE_CONFIG_<REMOTE-NAME>_<OPTION>`. Use uppercase for the remote name and option. See the [rclone docs](https://rclone.org/docs/#environment-variables) for the full list of options per provider.
+</Tip>
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine` (digest-pinned) |
+| Build base | `ghcr.io/jauderho/golang` (multi-stage, CGO disabled) |
+| Entrypoint | `/usr/local/bin/rclone` |
+| Runtime user | `rclone` (UID 1009 / GID 1009) |
+| Extra packages | `ca-certificates`, `fuse`, `tzdata` |
+| Platforms | `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `linux/ppc64le` |
+| GHCR | `ghcr.io/jauderho/rclone` |
+| Docker Hub | `docker.io/jauderho/rclone` |
+
+<Note>
+  The image sets `user_allow_other` in `/etc/fuse.conf`, which is required for FUSE mounts inside a container. To use `rclone mount`, you must also pass `--cap-add SYS_ADMIN --device /dev/fuse` to `docker run`.
+</Note>

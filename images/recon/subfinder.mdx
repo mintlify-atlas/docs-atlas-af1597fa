@@ -1,0 +1,100 @@
+---
+title: "Subfinder"
+description: "Subfinder — fast passive subdomain enumeration tool from ProjectDiscovery"
+---
+
+[Subfinder](https://github.com/projectdiscovery/subfinder) is a passive subdomain discovery tool from ProjectDiscovery. It queries public passive sources — certificate transparency logs, DNS datasets, search engines, and other OSINT APIs — without sending any direct requests to the target. This makes it suitable for stealthy reconnaissance where you want to avoid touching target infrastructure.
+
+The image label describes it as: *"subfinder is a subdomain discovery tool via passive online sources"*.
+
+<Warning>
+Only run Subfinder against domains you own or have explicit written permission to enumerate. Even passive enumeration may expose your API key usage to data providers.
+</Warning>
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/subfinder:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/subfinder:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+### Basic subdomain enumeration
+
+```bash
+docker run --rm ghcr.io/jauderho/subfinder:latest -d example.com
+```
+
+### Silent mode (subdomains only)
+
+Use `-silent` to suppress the banner and print only discovered subdomains — useful when piping output to other tools:
+
+```bash
+docker run --rm ghcr.io/jauderho/subfinder:latest -d example.com -silent
+```
+
+### JSON output
+
+Use `-json` to emit structured output with source attribution for each result:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/subfinder:latest \
+  -d example.com -json -o /output/subdomains.json
+```
+
+### Enumerate multiple domains
+
+Pass a file containing one domain per line with `-dL`:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/targets:/targets" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/subfinder:latest \
+  -dL /targets/domains.txt -o /output/all-subdomains.txt
+```
+
+### Using provider API keys
+
+Subfinder uses a provider configuration file to authenticate with data sources such as Shodan, VirusTotal, Censys, and others. Mount your local config directory to `/root/.config/subfinder/`:
+
+```bash
+docker run --rm \
+  -v "$HOME/.config/subfinder:/root/.config/subfinder" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/subfinder:latest \
+  -d example.com -silent -o /output/results.txt
+```
+
+<Note>
+Without provider keys, Subfinder still queries sources that don't require authentication, but coverage is reduced. Add keys for VirusTotal, Shodan, Censys, and similar sources to maximize discovery.
+</Note>
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine:3.23.3` |
+| Build base | `ghcr.io/jauderho/golang:1.26.1-alpine3.23` |
+| Entrypoint | `/usr/local/bin/subfinder` |
+| Source | [github.com/projectdiscovery/subfinder](https://github.com/projectdiscovery/subfinder) |
+
+<Tip>
+Combine Subfinder with httpx to quickly filter discovered subdomains to only those with live HTTP services:
+
+```bash
+docker run --rm ghcr.io/jauderho/subfinder:latest -d example.com -silent | \
+  docker run --rm -i ghcr.io/jauderho/httpx:latest -silent
+```
+</Tip>

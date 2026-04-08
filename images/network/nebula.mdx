@@ -1,0 +1,115 @@
+---
+title: "Nebula"
+description: "Hardened Docker image for Nebula, a scalable overlay networking tool from Slack"
+---
+
+Nebula is a scalable overlay networking tool with a focus on performance, simplicity, and security. Originally developed at Slack, it lets you build secure mesh networks across hosts in any environment using a built-in certificate authority and lightweight tunnels.
+
+## Pull the image
+
+<CodeGroup>
+
+```bash GitHub Container Registry
+docker pull ghcr.io/jauderho/nebula:latest
+```
+
+```bash Docker Hub
+docker pull jauderho/nebula:latest
+```
+
+</CodeGroup>
+
+## Included binaries
+
+The image ships two binaries:
+
+| Binary          | Purpose                                              |
+| --------------- | ---------------------------------------------------- |
+| `nebula`        | The overlay network daemon                           |
+| `nebula-cert`   | Certificate authority tool for signing node certs   |
+
+## Run the container
+
+<Warning>
+  Nebula requires access to the host's TUN device to create the overlay network interface. Pass `--device /dev/net/tun` and add `NET_ADMIN` capability.
+</Warning>
+
+<Tabs>
+  <Tab title="docker run">
+    ```bash
+    docker run -d \
+      --name nebula \
+      --cap-add NET_ADMIN \
+      --device /dev/net/tun:/dev/net/tun \
+      -v /path/to/config:/config:ro \
+      ghcr.io/jauderho/nebula:latest \
+      /usr/local/bin/nebula -config /config/config.yml
+    ```
+  </Tab>
+  <Tab title="docker-compose">
+    ```yaml
+    services:
+      nebula:
+        image: ghcr.io/jauderho/nebula:latest
+        container_name: nebula
+        restart: unless-stopped
+        cap_add:
+          - NET_ADMIN
+        devices:
+          - /dev/net/tun:/dev/net/tun
+        volumes:
+          - ./config:/config:ro
+        command: ["/usr/local/bin/nebula", "-config", "/config/config.yml"]
+    ```
+  </Tab>
+</Tabs>
+
+## Generating certificates
+
+Use `nebula-cert` inside the container to create a CA and sign node certificates:
+
+```bash
+# Create a CA
+docker run --rm \
+  -v /path/to/certs:/certs \
+  ghcr.io/jauderho/nebula:latest \
+  /usr/local/bin/nebula-cert ca -name "My Nebula CA" -out-crt /certs/ca.crt -out-key /certs/ca.key
+
+# Sign a node certificate
+docker run --rm \
+  -v /path/to/certs:/certs \
+  ghcr.io/jauderho/nebula:latest \
+  /usr/local/bin/nebula-cert sign \
+    -name "node1" \
+    -ip "192.168.100.1/24" \
+    -ca-crt /certs/ca.crt \
+    -ca-key /certs/ca.key \
+    -out-crt /certs/node1.crt \
+    -out-key /certs/node1.key
+```
+
+## Volume mounts
+
+| Container path | Purpose                                          |
+| -------------- | ------------------------------------------------ |
+| `/config`      | Nebula configuration YAML and certificates       |
+
+## Required capabilities
+
+| Capability / device | Reason                                              |
+| ------------------- | --------------------------------------------------- |
+| `CAP_NET_ADMIN`     | Create and manage the Nebula TUN interface          |
+| `/dev/net/tun`      | TUN device for the overlay network tunnel           |
+
+## Image details
+
+| Property      | Value                                         |
+| ------------- | --------------------------------------------- |
+| Base image    | `scratch`                                     |
+| Build base    | `ghcr.io/jauderho/golang` (Alpine)            |
+| Default cmd   | `/usr/local/bin/nebula`                       |
+| Upstream repo | [slackhq/nebula](https://github.com/slackhq/nebula/) |
+
+<Tip>
+  The final image is built `FROM scratch`, containing only the `nebula` and `nebula-cert` binaries plus CA certificates. There is no shell inside the container.
+</Tip>

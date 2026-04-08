@@ -1,0 +1,24 @@
+---
+title: "Network & DNS tools"
+description: "Hardened Docker images for DNS, VPN, and network infrastructure"
+---
+
+This group covers hardened images for DNS resolution, DNS encryption, and overlay networking. Each image is built from a minimal base, rebuilt weekly, and pushed to both GitHub Container Registry and Docker Hub.
+
+<CardGroup cols={2}>
+  <Card title="Unbound" icon="shield-halved" href="/images/network/unbound">
+    Validating, recursive, caching DNS resolver from NLnet Labs.
+  </Card>
+  <Card title="CoreDNS" icon="server" href="/images/network/coredns">
+    Flexible DNS server that chains plugins, built from scratch for a minimal footprint.
+  </Card>
+  <Card title="dnscrypt-proxy" icon="lock" href="/images/network/dnscrypt-proxy">
+    DNS proxy with support for DNSCrypt v2 and DNS-over-HTTPS (DoH).
+  </Card>
+  <Card title="Tailscale" icon="network-wired" href="/images/network/tailscale">
+    Zero-config VPN built on WireGuard, with subnet routing and MagicDNS.
+  </Card>
+  <Card title="Nebula" icon="diagram-project" href="/images/network/nebula">
+    Scalable overlay networking tool from Slack, with built-in certificate authority.
+  </Card>
+</CardGroup>

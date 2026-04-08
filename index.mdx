@@ -1,97 +1,79 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "jauderho/dockerfiles"
+description: "Hardened, minimal Docker images for 80+ open-source tools. Security-scanned daily, automatically rebuilt on upstream releases, signed with cosign."
 ---
 
-## Setting up
+Hardened Docker images for tools you already use — rebuilt automatically, scanned daily, and signed for supply chain integrity.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Pull a hardened image and be running in under 2 minutes
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Browse Images" icon="box-open" href="/images/security/overview">
+    Explore 80+ images across security, networking, and DevOps
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Security Model" icon="shield-halved" href="/security">
+    Understand how images are hardened, scanned, and signed
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Contribute" icon="code-pull-request" href="/contributing/adding-images">
+    Add a new image following the project standards
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Get started in seconds
 
-Everything you need to create world-class documentation.
+<Steps>
+  <Step title="Choose a registry">
+    Images are available on GitHub Container Registry (recommended) and Docker Hub.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    ```bash
+    # GitHub Container Registry (recommended — higher rate limits)
+    docker pull ghcr.io/jauderho/nginx:latest
 
-## Need inspiration?
+    # Docker Hub
+    docker pull jauderho/nginx:latest
+    ```
+  </Step>
+  <Step title="Run your image">
+    Every image follows standard Docker conventions. Most accept the same flags as the upstream tool.
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    ```bash
+    docker run --rm ghcr.io/jauderho/trufflehog:latest \
+      github --repo https://github.com/example/repo
+    ```
+  </Step>
+  <Step title="Pin to a version">
+    Use version tags or digest references for reproducible deployments.
+
+    ```bash
+    # Version tag
+    docker pull ghcr.io/jauderho/terraform:v1.12.1
+
+    # Digest reference (most reproducible)
+    docker pull ghcr.io/jauderho/terraform@sha256:<digest>
+    ```
+  </Step>
+</Steps>
+
+## Why these images?
+
+<CardGroup cols={2}>
+  <Card title="Security hardened" icon="shield-check">
+    Compiled with `-fstack-protector-strong`, `-D_FORTIFY_SOURCE=3`, full RELRO. Non-root execution by default.
+  </Card>
+  <Card title="Automatically updated" icon="rotate">
+    Upstream repos are monitored. New images build within 1 hour of an upstream release tag.
+  </Card>
+  <Card title="Daily CVE scanning" icon="bug">
+    Every image is scanned daily by Trivy and Anchore. Build status is public.
+  </Card>
+  <Card title="Signed & SBOM included" icon="file-certificate">
+    Images are signed with cosign. SBOMs are attached to every build for full provenance.
+  </Card>
+  <Card title="Minimal footprint" icon="minimize">
+    Multi-stage builds leave build tools behind. Only the binary and runtime deps ship.
+  </Card>
+  <Card title="Multi-arch" icon="microchip">
+    Most images support linux/amd64, linux/arm64, linux/ppc64le, and linux/arm/v7.
+  </Card>
+</CardGroup>

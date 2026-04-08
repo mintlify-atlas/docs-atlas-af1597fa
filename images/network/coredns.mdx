@@ -1,0 +1,94 @@
+---
+title: "CoreDNS"
+description: "Hardened Docker image for CoreDNS, a DNS server that chains plugins"
+---
+
+CoreDNS is a DNS server written in Go. It is designed around a plugin architecture — each plugin implements a DNS feature, and you chain them together in a `Corefile` to build exactly the DNS server you need.
+
+## Pull the image
+
+<CodeGroup>
+
+```bash GitHub Container Registry
+docker pull ghcr.io/jauderho/coredns:latest
+```
+
+```bash Docker Hub
+docker pull jauderho/coredns:latest
+```
+
+</CodeGroup>
+
+## Run the container
+
+<Tabs>
+  <Tab title="docker run">
+    ```bash
+    docker run -d \
+      --name coredns \
+      -p 53:53/tcp \
+      -p 53:53/udp \
+      ghcr.io/jauderho/coredns:latest
+    ```
+  </Tab>
+  <Tab title="docker-compose">
+    ```yaml
+    services:
+      coredns:
+        image: ghcr.io/jauderho/coredns:latest
+        container_name: coredns
+        restart: unless-stopped
+        ports:
+          - "53:53/tcp"
+          - "53:53/udp"
+        volumes:
+          - ./Corefile:/Corefile:ro
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Port 53 requires elevated privileges or `CAP_NET_BIND_SERVICE` on Linux hosts. Map to a non-privileged port such as `5353` if port 53 is already in use.
+</Note>
+
+## Configuration
+
+CoreDNS reads a `Corefile` at startup. Mount one to customise plugin chains:
+
+```bash
+docker run -d \
+  --name coredns \
+  -p 53:53/tcp \
+  -p 53:53/udp \
+  -v /path/to/Corefile:/Corefile:ro \
+  ghcr.io/jauderho/coredns:latest
+```
+
+A minimal `Corefile` that forwards all queries to `1.1.1.1`:
+
+```text
+. {
+    forward . 1.1.1.1
+    log
+    errors
+}
+```
+
+## Exposed ports
+
+| Port | Protocol | Description        |
+| ---- | -------- | ------------------ |
+| 53   | TCP/UDP  | DNS query listener |
+
+## Image details
+
+| Property      | Value                                  |
+| ------------- | -------------------------------------- |
+| Base image    | `scratch`                              |
+| Build base    | `ghcr.io/jauderho/golang` (Alpine)     |
+| Entrypoint    | `/usr/local/bin/coredns`               |
+| Upstream repo | [coredns/coredns](https://github.com/coredns/coredns) |
+
+<Tip>
+  The final image is built `FROM scratch`, meaning it contains only the CoreDNS binary and CA certificates. There is no shell or package manager inside the container.
+</Tip>

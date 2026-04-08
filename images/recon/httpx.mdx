@@ -1,0 +1,100 @@
+---
+title: "httpx"
+description: "httpx — fast and multi-purpose HTTP toolkit from ProjectDiscovery"
+---
+
+[httpx](https://github.com/projectdiscovery/httpx) is a fast and multi-purpose HTTP toolkit from ProjectDiscovery. It probes a list of hosts or URLs, checks which ones serve live HTTP responses, extracts metadata like status codes and page titles, detects web technologies, and can emit structured JSON output for downstream processing.
+
+The image label describes it as: *"httpx is a fast and multi-purpose HTTP toolkit"*.
+
+<Warning>
+Only probe hosts you own or have explicit written permission to test. Sending HTTP requests to third-party infrastructure without authorization may violate computer fraud laws.
+</Warning>
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/httpx:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/httpx:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+### Probe a single host
+
+```bash
+docker run --rm ghcr.io/jauderho/httpx:latest -u example.com
+```
+
+### Probe a list of hosts from a file
+
+```bash
+docker run --rm \
+  -v "$(pwd)/targets:/targets" \
+  ghcr.io/jauderho/httpx:latest \
+  -l /targets/hosts.txt
+```
+
+### Pipe subdomains from stdin
+
+httpx reads from stdin when no input file or URL is specified, making it easy to chain with other tools:
+
+```bash
+cat subdomains.txt | docker run --rm -i ghcr.io/jauderho/httpx:latest -silent
+```
+
+### Pipe from Subfinder
+
+```bash
+docker run --rm ghcr.io/jauderho/subfinder:latest -d example.com -silent | \
+  docker run --rm -i ghcr.io/jauderho/httpx:latest -status-code -title -silent
+```
+
+### JSON output with metadata
+
+Collect status codes, page titles, and technology detections in a structured format:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/targets:/targets" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/httpx:latest \
+  -l /targets/hosts.txt \
+  -status-code -title -tech-detect \
+  -json -o /output/httpx-results.json
+```
+
+## Common flags
+
+| Flag | Description |
+|---|---|
+| `-status-code` | Display HTTP status code in output |
+| `-title` | Display page title extracted from HTML |
+| `-tech-detect` | Detect web technologies using Wappalyzer signatures |
+| `-json` | Emit results as newline-delimited JSON |
+| `-silent` | Suppress banner; print only results |
+| `-l <file>` | Input file containing one host or URL per line |
+| `-u <url>` | Single URL or host to probe |
+| `-o <file>` | Write output to a file |
+| `-threads <n>` | Number of concurrent threads (default: 50) |
+
+<Note>
+httpx probes both HTTP and HTTPS by default. Use `-no-fallback` to skip the fallback scheme if you only want results for one protocol.
+</Note>
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine:3.23.3` |
+| Build base | `ghcr.io/jauderho/golang:1.26.1-alpine3.23` |
+| Entrypoint | `/usr/local/bin/httpx` |
+| Source | [github.com/projectdiscovery/httpx](https://github.com/projectdiscovery/httpx) |

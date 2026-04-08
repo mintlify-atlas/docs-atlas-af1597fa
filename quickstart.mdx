@@ -1,80 +1,166 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "Pull and run your first hardened Docker image in minutes"
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+Images are available on two registries. The steps below walk you through choosing a registry, pulling an image, running it, and pinning to a specific version.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  **GitHub Container Registry is recommended.** It has higher rate limits than Docker Hub and is the canonical source for all images in this project.
 </Note>
+
+<Steps>
+
+<Step title="Choose a registry">
+
+All images are published simultaneously to both registries under the same tag scheme.
+
+<Tabs>
+  <Tab title="GitHub Container Registry (recommended)">
+    ```bash
+    # Pull from ghcr.io
+    docker pull ghcr.io/jauderho/<image>:latest
+    ```
+
+    Images at `ghcr.io/jauderho/` are the canonical source. Use this registry to avoid Docker Hub rate limits, especially in CI.
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    # Pull from Docker Hub
+    docker pull jauderho/<image>:latest
+    ```
+
+    Docker Hub images are published at [hub.docker.com/u/jauderho](https://hub.docker.com/u/jauderho/) and are identical to the GHCR images.
+  </Tab>
+</Tabs>
+
+</Step>
+
+<Step title="Pull an image">
+
+Pick one of the 80+ available tools. A few common examples:
+
+<CodeGroup>
+
+```bash nginx
+docker pull ghcr.io/jauderho/nginx:latest
+```
+
+```bash trufflehog
+docker pull ghcr.io/jauderho/trufflehog:latest
+```
+
+```bash terraform
+docker pull ghcr.io/jauderho/terraform:latest
+```
+
+```bash ansible
+docker pull ghcr.io/jauderho/ansible:latest
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Run the image">
+
+Every image follows standard Docker conventions. Most accept the same CLI flags as the upstream tool.
+
+<CodeGroup>
+
+```bash nginx
+docker run --rm -p 80:80 ghcr.io/jauderho/nginx:latest
+```
+
+```bash trufflehog
+docker run --rm ghcr.io/jauderho/trufflehog:latest \
+  github --repo https://github.com/example/repo
+```
+
+```bash terraform
+docker run --rm -v "$(pwd)":/workspace \
+  -w /workspace \
+  ghcr.io/jauderho/terraform:latest \
+  init
+```
+
+```bash ansible
+docker run --rm -v "$(pwd)":/workspace \
+  -w /workspace \
+  ghcr.io/jauderho/ansible:latest \
+  ansible --version
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Pin to a specific version">
+
+Using `:latest` is convenient for development, but production deployments should pin to a specific version or digest.
+
+**Option 1 — Version tag**
+
+Version tags match the upstream tool's release version:
+
+```bash
+docker pull ghcr.io/jauderho/terraform:v1.12.1
+```
+
+**Option 2 — SHA-256 digest (most reproducible)**
+
+A digest reference is immutable. Even if `:latest` is updated, the digest always resolves to the exact same image layer set:
+
+```bash
+# Pull by digest
+docker pull ghcr.io/jauderho/terraform@sha256:<digest>
+
+# Use in a Dockerfile
+FROM ghcr.io/jauderho/terraform@sha256:<digest>
+```
+
+<Tip>
+  Get a digest for any tag with `docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/jauderho/terraform:latest`.
+</Tip>
+
+This is the same approach used internally — every `FROM` line in these Dockerfiles pins base images by digest to prevent supply chain attacks.
+
+</Step>
+
+<Step title="Verify the image signature">
+
+All images are signed with [cosign](https://github.com/sigstore/cosign). Verifying the signature confirms the image was built by this project and has not been tampered with.
+
+First, install cosign if you do not already have it:
+
+```bash
+# Install cosign (see https://docs.sigstore.dev/cosign/system_config/installation for all options)
+brew install cosign          # macOS
+go install github.com/sigstore/cosign/v2/cmd/cosign@latest  # Go
+```
+
+Then verify the image:
+
+```bash
+cosign verify ghcr.io/jauderho/nginx:latest \
+  --certificate-identity-regexp="https://github.com/jauderho/dockerfiles" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+```
+
+A successful verification prints the certificate and signature metadata. A failure means the image did not come from this project's GitHub Actions pipeline.
+
+</Step>
+
+</Steps>
+
+## What makes these images different?
+
+These images are not just re-tagged upstream images. Each one is:
+
+- **Compiled from source** with hardening flags (`-fstack-protector-strong`, `-D_FORTIFY_SOURCE=3`, full RELRO)
+- **Built with multi-stage Dockerfiles** so build tools never ship in the final image
+- **Scanned daily** by Trivy and Anchore for CVEs
+- **Rebuilt automatically** within an hour of a new upstream release tag
+- **Signed** with cosign and include an attached SBOM
+
+See the [Security Model](/security) page for the full breakdown.

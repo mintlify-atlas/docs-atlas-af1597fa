@@ -1,0 +1,78 @@
+---
+title: "docker-bench-security"
+description: "Hardened Docker image for running CIS Docker Benchmark security checks against a Docker host"
+---
+
+docker-bench-security automates tests based on the CIS Docker Benchmark. It inspects the Docker daemon configuration, container runtime settings, image content, and host-level controls to identify deviations from security best practices.
+
+Upstream project: [docker/docker-bench-security](https://github.com/docker/docker-bench-security)
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry (recommended)">
+    ```bash
+    docker pull ghcr.io/jauderho/docker-bench-security:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/docker-bench-security:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+docker-bench-security requires access to the Docker socket and host namespaces to inspect the running system. Run it with the flags below.
+
+### Run the full benchmark
+
+```bash
+docker run --rm \
+  --net host \
+  --pid host \
+  --userns host \
+  --cap-add audit_control \
+  -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \
+  -v /etc:/etc:ro \
+  -v /lib/systemd/system:/lib/systemd/system:ro \
+  -v /usr/bin/containerd:/usr/bin/containerd:ro \
+  -v /usr/bin/runc:/usr/bin/runc:ro \
+  -v /usr/lib/systemd:/usr/lib/systemd:ro \
+  -v /var/lib:/var/lib:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  ghcr.io/jauderho/docker-bench-security:latest
+```
+
+<Note>
+The broad host mounts are required by the upstream benchmark script to inspect systemd units, Docker daemon configuration, and container state. Review the [upstream project](https://github.com/docker/docker-bench-security) to understand exactly what each mount is used for.
+</Note>
+
+## Volume mounts
+
+The benchmark script reads from the host filesystem to evaluate system-level controls. Common mount points it inspects include:
+
+| Host path | Mount mode | Purpose |
+|---|---|---|
+| `/etc` | `ro` | Docker daemon and system configuration files |
+| `/var/run/docker.sock` | `ro` | Docker socket for container inspection |
+| `/var/lib` | `ro` | Docker data directory |
+| `/usr/bin/containerd` | `ro` | Container runtime binary |
+| `/usr/bin/runc` | `ro` | OCI runtime binary |
+| `/lib/systemd/system` | `ro` | Systemd unit files |
+| `/usr/lib/systemd` | `ro` | Systemd library files |
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine` (Alpine Linux) |
+| Runtime dependencies | `iproute2`, `docker-cli`, `dumb-init` |
+| Entrypoint | `dumb-init /bin/sh docker-bench-security.sh` |
+| Working directory | `/usr/local/bin` |
+| Health check | `exit 0` (always healthy) |
+
+<Tip>
+`dumb-init` is used as the init process to correctly forward signals and reap zombie processes, which is important when the benchmark script spawns subshells.
+</Tip>

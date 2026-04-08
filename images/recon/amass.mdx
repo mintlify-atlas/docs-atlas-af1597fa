@@ -1,0 +1,95 @@
+---
+title: "Amass"
+description: "OWASP Amass — in-depth attack surface mapping and asset discovery"
+---
+
+[Amass](https://github.com/owasp/amass) is the OWASP project for in-depth attack surface mapping and external asset discovery. It performs network mapping through DNS enumeration, scraping of certificate transparency logs, web archive data, and various passive and active techniques to build a comprehensive picture of a target's external exposure.
+
+The image label describes it as: *"amass performs network mapping of attack surfaces and external asset discovery"*.
+
+<Warning>
+Only run Amass against domains you own or have explicit written permission to enumerate. Active enumeration modes send DNS queries and HTTP requests directly to target infrastructure.
+</Warning>
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/amass:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/amass:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+### Basic subdomain enumeration
+
+Run a passive and active enumeration against a domain:
+
+```bash
+docker run --rm ghcr.io/jauderho/amass:latest enum -d example.com
+```
+
+### Save output to a file
+
+Mount a local directory to capture results:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/amass:latest \
+  enum -d example.com -o /output/amass-results.txt
+```
+
+### Passive-only enumeration
+
+Use `-passive` to avoid sending any direct queries to target infrastructure:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/amass:latest \
+  enum -passive -d example.com -o /output/amass-passive.txt
+```
+
+### Using a configuration file
+
+Amass supports a configuration file for API keys, resolvers, and scope settings. Mount a local config directory to `/config`:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/config:/config" \
+  -v "$(pwd)/output:/output" \
+  ghcr.io/jauderho/amass:latest \
+  enum -config /config/config.yaml -d example.com -o /output/results.txt
+```
+
+<Note>
+The image sets `/config` as the working directory in the build stage. Mount your `config.yaml` or `config.ini` to `/config` inside the container to provide API keys for data sources such as VirusTotal, Shodan, and others.
+</Note>
+
+### View help
+
+```bash
+docker run --rm ghcr.io/jauderho/amass:latest -help
+```
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Base image | `ghcr.io/jauderho/alpine:3.23.3` |
+| Build base | `ghcr.io/jauderho/golang:1.26.1-alpine3.23` |
+| Entrypoint | `/usr/local/bin/amass` |
+| Default command | `-help` |
+| Source | [github.com/owasp/amass](https://github.com/owasp/amass) |
+
+<Tip>
+Amass writes structured output when you pass `-json /output/results.json`. This is useful for piping results into other tools or storing enumeration data for later analysis.
+</Tip>

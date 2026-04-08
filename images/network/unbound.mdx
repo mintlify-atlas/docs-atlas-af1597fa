@@ -1,0 +1,81 @@
+---
+title: "Unbound"
+description: "Hardened Docker image for the Unbound validating, recursive, caching DNS resolver"
+---
+
+Unbound is a validating, recursive, caching DNS resolver developed by NLnet Labs. It supports DNSSEC validation out of the box and is designed for high performance and security.
+
+## Pull the image
+
+<CodeGroup>
+
+```bash GitHub Container Registry
+docker pull ghcr.io/jauderho/unbound:latest
+```
+
+```bash Docker Hub
+docker pull jauderho/unbound:latest
+```
+
+</CodeGroup>
+
+## Run the container
+
+<Tabs>
+  <Tab title="docker run">
+    ```bash
+    docker run -d \
+      --name unbound \
+      -p 53:53/tcp \
+      -p 53:53/udp \
+      ghcr.io/jauderho/unbound:latest
+    ```
+  </Tab>
+  <Tab title="docker-compose">
+    ```yaml
+    services:
+      unbound:
+        image: ghcr.io/jauderho/unbound:latest
+        container_name: unbound
+        restart: unless-stopped
+        ports:
+          - "53:53/tcp"
+          - "53:53/udp"
+        volumes:
+          - ./unbound.conf:/etc/unbound/unbound.conf:ro
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Port 53 requires elevated privileges or `CAP_NET_BIND_SERVICE` on Linux hosts. If port 53 is already in use (e.g. by `systemd-resolved`), disable it first or map to a non-privileged port such as `5353`.
+</Note>
+
+## Ports
+
+Unbound listens on port 53 by default. The Dockerfile does not declare an explicit `EXPOSE` directive, so you must publish the port explicitly when running the container:
+
+| Port | Protocol | Description        |
+| ---- | -------- | ------------------ |
+| 53   | TCP/UDP  | DNS query listener |
+
+## Volume mounts
+
+Mount a custom `unbound.conf` to override the default configuration:
+
+```bash
+docker run -d \
+  --name unbound \
+  -p 53:53/tcp \
+  -p 53:53/udp \
+  -v /path/to/unbound.conf:/etc/unbound/unbound.conf:ro \
+  ghcr.io/jauderho/unbound:latest
+```
+
+## Image details
+
+| Property      | Value                              |
+| ------------- | ---------------------------------- |
+| Base image    | `ghcr.io/jauderho/alpine`          |
+| Entrypoint    | `unbound`                          |
+| Upstream repo | [NLnetLabs/unbound](https://github.com/NLnetLabs/unbound/) |

@@ -1,0 +1,49 @@
+---
+title: "Developer Tools"
+description: "Hardened Docker images for infrastructure and automation tools"
+icon: "wrench"
+---
+
+This section covers hardened Docker images for infrastructure-as-code and automation tools. Each image is built from source using a multi-stage build, pinned to a digest-verified base image (`ghcr.io/jauderho/alpine`), and published to both GitHub Container Registry and Docker Hub.
+
+<CardGroup cols={2}>
+  <Card
+    title="Terraform"
+    icon="cloud"
+    href="/images/devtools/terraform"
+  >
+    HashiCorp Terraform for provisioning and managing infrastructure across cloud providers.
+  </Card>
+  <Card
+    title="OpenTofu"
+    icon="code"
+    href="/images/devtools/opentofu"
+  >
+    The open-source, Linux Foundation–maintained fork of Terraform.
+  </Card>
+  <Card
+    title="Ansible"
+    icon="server"
+    href="/images/devtools/ansible"
+  >
+    Agentless configuration management and IT automation platform.
+  </Card>
+  <Card
+    title="rclone"
+    icon="arrows-rotate"
+    href="/images/devtools/rclone"
+  >
+    Sync files and directories to and from 40+ cloud storage providers.
+  </Card>
+</CardGroup>
+
+## Common traits
+
+All images in this group share the following hardening properties:
+
+- **Multi-stage builds** — build toolchain is discarded; only the final binary is copied into the runtime image.
+- **Pinned digests** — every `FROM` instruction references a `sha256` digest, eliminating tag-mutability risks.
+- **Minimal base** — runtime images use `ghcr.io/jauderho/alpine`, which is kept up to date with `apk upgrade -a` at build time.
+- **Dual registry** — images are pushed to both `ghcr.io/jauderho/<tool>` and `docker.io/jauderho/<tool>`.
+- **Multi-platform** — images are built for `linux/amd64`, `linux/arm64`, and `linux/s390x`.
+- **SBOM + provenance** — each build attaches a Software Bill of Materials and build provenance attestation.

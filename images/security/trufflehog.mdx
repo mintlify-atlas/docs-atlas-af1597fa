@@ -1,0 +1,74 @@
+---
+title: "trufflehog"
+description: "Hardened Docker image for scanning git repositories and other sources for leaked credentials"
+---
+
+trufflehog finds leaked credentials. It scans git repository history, file systems, S3 buckets, and other sources for secrets such as API keys, tokens, and passwords using a large library of detectors with entropy analysis and pattern matching.
+
+Upstream project: [trufflesecurity/trufflehog](https://github.com/trufflesecurity/trufflehog)
+
+## Pull the image
+
+<Tabs>
+  <Tab title="GitHub Container Registry (recommended)">
+    ```bash
+    docker pull ghcr.io/jauderho/trufflehog:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/trufflehog:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Usage
+
+The container's entrypoint is `/usr/local/bin/trufflehog`. Pass subcommands and arguments directly after the image name.
+
+### Scan a public git repository
+
+```bash
+docker run --rm ghcr.io/jauderho/trufflehog:latest git https://github.com/<owner>/<repo>
+```
+
+### Scan a local repository by mounting it
+
+```bash
+docker run --rm \
+  -v /path/to/repo:/repo \
+  ghcr.io/jauderho/trufflehog:latest git file:///repo
+```
+
+### Scan only verified secrets
+
+```bash
+docker run --rm ghcr.io/jauderho/trufflehog:latest git --only-verified https://github.com/<owner>/<repo>
+```
+
+### Show help
+
+```bash
+docker run --rm ghcr.io/jauderho/trufflehog:latest --help
+```
+
+## Volume mounts
+
+| Mount path | Purpose |
+|---|---|
+| `/repo` (or any path) | Mount a local git repository for filesystem-based scanning |
+
+## Image details
+
+| Property | Value |
+|---|---|
+| Build base | `ghcr.io/jauderho/golang` (Alpine-based Go toolchain) |
+| Final base | `ghcr.io/jauderho/alpine` (Alpine Linux) |
+| Build type | Multi-stage — only the compiled binary is in the final image |
+| Runtime dependency | `git` (required for git repository scanning) |
+| Entrypoint | `/usr/local/bin/trufflehog` |
+| CGO | Disabled (`CGO_ENABLED=0`) |
+
+<Note>
+The binary is built with `-trimpath -ldflags="-s -w"` to strip debug symbols and reduce image size. The version string is embedded at build time via `-X main.Version`.
+</Note>

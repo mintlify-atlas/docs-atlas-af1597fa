@@ -1,0 +1,184 @@
+---
+title: "freenginx"
+description: "freenginx — the community fork of nginx, compiled from source with identical hardening flags"
+---
+
+[freenginx](https://freenginx.org) is a community-maintained fork of nginx, created in 2024 by Maxim Dounin (a long-time nginx core developer) after F5/NGINX Inc. began overriding developer decisions on the project. freenginx aims to be governed by developers rather than corporate policy.
+
+This image applies the exact same hardening stack as the [nginx (hardened)](/images/web/nginx) image — custom OpenSSL, PCRE2 with JIT, Cloudflare zlib, ngx_brotli, mimalloc, and the mold linker — to the freenginx source tarball.
+
+## Pull
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/freenginx:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/freenginx:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Run
+
+```bash
+docker run -d \
+  --name freenginx \
+  -p 80:80 \
+  -p 443:443 \
+  ghcr.io/jauderho/freenginx:latest
+```
+
+To serve your own static files:
+
+```bash
+docker run -d \
+  --name freenginx \
+  -p 80:80 \
+  -p 443:443 \
+  -v /path/to/your/site:/usr/share/nginx/html:ro \
+  -v /path/to/nginx.conf:/etc/nginx/nginx.conf:ro \
+  ghcr.io/jauderho/freenginx:latest
+```
+
+## Exposed ports
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| 80 | TCP | HTTP |
+| 443 | TCP | HTTPS / HTTP/2 |
+
+## freenginx vs nginx
+
+freenginx maintains API and configuration compatibility with nginx. Existing `nginx.conf` files work without modification.
+
+| Aspect | nginx (F5/NGINX Inc.) | freenginx |
+|---|---|---|
+| Governance | F5/NGINX Inc. | Independent developers |
+| Configuration compatibility | Reference | Fully compatible |
+| HTTP/3 module | `--with-http_v3_module` | Same (this build does not enable it) |
+| Release cadence | Mainline + stable branches | Independent mainline |
+| License | BSD 2-Clause | BSD 2-Clause |
+
+<Note>
+  The current freenginx image does not include `--with-http_v3_module`. If you need HTTP/3, use the [nginx (hardened)](/images/web/nginx) image, which enables `--with-http_v3_module` explicitly.
+</Note>
+
+## Build details
+
+The freenginx Dockerfile is nearly identical to the nginx one, with the source URL changed to `freenginx.org`:
+
+```dockerfile
+FROM ghcr.io/jauderho/alpine:3.23.3
+
+ARG BUILD_VERSION
+ARG OPENSSL_VERSION
+ARG PCRE_VERSION
+
+RUN wget -O - http://freenginx.org/download/freenginx-${BUILD_VERSION}.tar.gz | tar zxf - && \
+    # ... OpenSSL, PCRE2, Cloudflare zlib, ngx_brotli ... \
+    ./configure \
+      --with-http_ssl_module \
+      --with-http_v2_module \
+      --with-http_realip_module \
+      --with-stream \
+      --with-stream_ssl_module \
+      --add-module=/tmp/ngx_brotli \
+      --with-cc-opt='...' \
+      --with-ld-opt='...' \
+      --with-openssl=... \
+      --with-pcre-jit && \
+    make && strip objs/nginx && make install
+
+ENTRYPOINT ["nginx", "-g", "daemon off;"]
+```
+
+### Compiler hardening flags
+
+```bash
+--with-cc-opt='-O3 -march=native -pipe -flto=auto \
+  -fomit-frame-pointer \
+  -fstack-protector-strong -fstack-clash-protection \
+  --param=ssp-buffer-size=4 \
+  -grecord-gcc-switches \
+  -fPIE -pie -fno-plt \
+  -fno-semantic-interposition \
+  -Wformat-security \
+  -Wno-error=strict-aliasing \
+  -Wno-error=vla-parameter \
+  -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=3'
+```
+
+### Linker flags
+
+```bash
+--with-ld-opt='-fuse-ld=mold -lmimalloc \
+  -O3 -march=native -flto=auto \
+  -fPIE -Wl,-pie \
+  -Wl,-z,relro -Wl,-z,now \
+  -Wl,-z,noexecstack'
+```
+
+### OpenSSL options
+
+```bash
+--with-openssl-opt="enable-quic enable-tfo enable-ktls enable-pie \
+  enable-ec_nistp_64_gcc_128 \
+  threads \
+  no-tls-deprecated-ec \
+  no-ssl no-tls1 no-tls1_1 \
+  no-weak-ssl-ciphers no-deprecated \
+  no-comp no-tests \
+  -DOPENSSL_TLS_SECURITY_LEVEL=3"
+```
+
+### Applied patches
+
+Two patches are applied to the freenginx source:
+
+- **ChaCha20 reprioritization** — prefers ChaCha20-Poly1305 on clients without hardware AES acceleration.
+- **Gzip 207 status** — corrects gzip behaviour for HTTP 207 (Multi-Status) responses.
+
+### Enabled modules
+
+```text
+--with-http_ssl_module
+--with-http_realip_module
+--with-http_v2_module
+--with-http_gunzip_module
+--with-http_gzip_static_module
+--with-http_secure_link_module
+--with-http_slice_module
+--with-http_auth_request_module
+--with-stream
+--with-stream_ssl_module
+--with-stream_ssl_preread_module
+--with-stream_realip_module
+--add-module=/tmp/ngx_brotli
+--with-file-aio
+--with-threads
+--with-pcre-jit
+```
+
+### Disabled modules
+
+```text
+--without-http_autoindex_module
+--without-http_ssi_module
+--without-http_uwsgi_module
+--without-http_scgi_module
+--without-http_empty_gif_module
+--without-http_browser_module
+--without-http_split_clients_module
+```
+
+## Runtime details
+
+- Runs as the dedicated `nginx` user (non-root, no login shell).
+- Process started with `nginx -g 'daemon off;'`.
+- Logs directed to stdout (access) and stderr (error) for `docker logs` compatibility.
+- Platforms: `linux/amd64`, `linux/arm64`.
+- Built weekly via GitHub Actions.

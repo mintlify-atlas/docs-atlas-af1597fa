@@ -1,0 +1,212 @@
+---
+title: "Build System"
+description: "How images are built, versioned, and published automatically"
+---
+
+Every image in this repository is built, versioned, and published entirely through GitHub Actions. No manual `docker build` or `docker push` commands are involved in releases.
+
+## Workflow Triggers
+
+Each image has its own workflow file at `.github/workflows/<image>.yml`. Every workflow supports three trigger modes:
+
+<AccordionGroup>
+  <Accordion title="push — change-triggered builds">
+    A push to the `main` branch triggers a rebuild when files related to that specific image change. The `paths` filter prevents unrelated changes from triggering unnecessary builds.
+
+    ```yaml
+    on:
+      push:
+        branches:
+          - main
+        paths:
+          - adguardhome/*
+          - .github/workflows/adguardhome.yml
+    ```
+  </Accordion>
+
+  <Accordion title="schedule — weekly freshness rebuilds">
+    Every workflow runs on a weekly cron schedule (`0 8 * * 1` — Mondays at 08:00 UTC). This ensures images are rebuilt even when the upstream project has no new release, picking up OS-layer package updates and base image patches.
+
+    ```yaml
+    schedule:
+      - cron: "0 8 * * 1"
+    ```
+  </Accordion>
+
+  <Accordion title="workflow_dispatch — manual on-demand builds">
+    Any workflow can be triggered manually from the GitHub Actions UI or the `gh` CLI. This is used by maintenance scripts like `scripts/rebuildAllGo.sh` to kick off bulk rebuilds.
+
+    ```bash
+    # Trigger a single image build manually
+    gh workflow run adguardhome
+
+    # rebuildAllGo.sh iterates a list and triggers each one
+    for i in "${ACTION[@]}"; do
+      gh workflow run "${i}"
+    done
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Version Pinning with BUILD\_VERSION
+
+Each workflow hardcodes the target version in the `env` block at the top of the file. This is the single source of truth for what version gets built and tagged.
+
+```yaml
+env:
+  BUILD_VERSION: "v0.108.0-b.71"
+  DOCKER_CLI_EXPERIMENTAL: enabled
+  REPOSITORY: ${{ github.actor }}/${{ github.workflow }}
+```
+
+The `BUILD_VERSION` value is passed as a Docker build argument into the Dockerfile, and is also used to construct the image tags. The automated `updateDockerImages.sh` script updates this value in the workflow file whenever the upstream GitHub repository publishes a new release, commits the change, and pushes — which in turn triggers the `push` workflow above.
+
+```bash
+# updateDockerImages.sh fetches the latest release tag and compares
+rver=$(curl -sL -u "$PAT" "https://api.github.com/repos/${i}/releases/latest" | jq -r '.tag_name')
+
+if [ "$dver" != "$rver" ]; then
+  sed -i -e "s/\"$dver\"/\"$rver\"/" ".github/workflows/${prog}.yml"
+  git commit -S -s -m "Updated ${prog} to ${rver}"
+  git push
+fi
+```
+
+The `Update Docker` workflow (`update-docker.yml`) runs this script on an hourly schedule (`0 * * * *`), so new upstream releases are picked up and built within approximately one hour.
+
+## Multi-Architecture Builds
+
+Images are built for four platforms simultaneously using Docker's QEMU emulation and Buildx:
+
+```yaml
+platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/arm/v7
+```
+
+This requires two setup steps before the build:
+
+<Steps>
+  <Step title="Set up QEMU">
+    QEMU provides CPU emulation so that non-native architectures (arm64, ppc64le, arm/v7) can be built on the amd64 GitHub Actions runner.
+
+    ```yaml
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+    ```
+  </Step>
+
+  <Step title="Set up Docker Buildx">
+    Buildx is the extended Docker CLI plugin that drives multi-platform builds. It uses the QEMU setup from the previous step.
+
+    ```yaml
+    - name: Setup Buildx
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+    ```
+  </Step>
+
+  <Step title="Build and push all platforms">
+    A single `docker/build-push-action` invocation produces manifests for all four platforms and pushes them atomically.
+
+    ```yaml
+    - name: Build and push
+      uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+      with:
+        push: ${{ github.event_name != 'pull_request' }}
+        context: ${{ github.workflow }}
+        platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/arm/v7
+        build-args: |
+          BUILD_VERSION
+        sbom: true
+        provenance: true
+        cache-from: type=gha, scope=${{ github.workflow }}
+        cache-to: type=gha, scope=${{ github.workflow }}
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Some images comment out platform variants in their workflow when an upstream dependency does not support that architecture. The commented lines (`#platforms: ...`) document which combinations were considered.
+</Note>
+
+## Dual Registry Publishing
+
+Every build pushes to both GitHub Container Registry and Docker Hub simultaneously. Two separate login steps authenticate to each registry before the build runs.
+
+```yaml
+- name: GitHub login
+  uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+  with:
+    registry: ghcr.io
+    username: ${{ github.actor }}
+    password: ${{ secrets.GITHUB_TOKEN }}
+
+- name: DockerHub login
+  uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+  with:
+    username: ${{ secrets.DOCKERHUB_USERNAME }}
+    password: ${{ secrets.DOCKERHUB_PASSWORD }}
+```
+
+The `tags` block in the build step lists all four destinations — both registries receive a versioned tag and a `latest` tag:
+
+```yaml
+tags: |
+  docker.io/${{ env.REPOSITORY }}:${{ env.BUILD_VERSION }}
+  docker.io/${{ env.REPOSITORY }}:latest
+  ghcr.io/${{ env.REPOSITORY }}:${{ env.BUILD_VERSION }}
+  ghcr.io/${{ env.REPOSITORY }}:latest
+```
+
+<Tip>
+  GitHub Container Registry (`ghcr.io`) is the recommended pull source. It is more reliable for automated pulls and avoids Docker Hub rate limits.
+</Tip>
+
+## GHA Layer Cache
+
+Build times are reduced by caching Docker layers in GitHub Actions Cache. The cache is scoped per workflow (i.e., per image) so that concurrent builds do not share cache entries across different images.
+
+```yaml
+cache-from: type=gha, scope=${{ github.workflow }}
+cache-to:   type=gha, scope=${{ github.workflow }}
+```
+
+On a rebuild where only the `BUILD_VERSION` argument changes, unchanged layers (base image, system packages, build toolchain) are restored from cache and only the final application layer is rebuilt.
+
+## Image Metadata and Labels
+
+OCI-compliant labels are attached to every image using `docker/metadata-action`. This enables container runtimes and registries to display version and provenance information.
+
+```yaml
+- name: Set Docker metadata
+  uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+  with:
+    images: ${{ env.REPOSITORY }}
+    labels: |
+      org.opencontainers.image.version=${{ env.BUILD_VERSION }}
+      org.opencontainers.image.revision=${{ github.sha }}
+      org.opencontainers.image.title=${{ env.REPOSITORY }}
+```
+
+## Security Hardening of the Runner
+
+All workflows use Step Security's Harden Runner to restrict the GitHub Actions runner itself. This enforces an egress allowlist so that the runner can only contact known-good endpoints during the build.
+
+```yaml
+- name: Harden Runner
+  uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d # v2.16.1
+  with:
+    egress-policy: audit
+    allowed-endpoints:
+      ghcr.io:443
+      github.com:443
+      registry-1.docker.io:443
+      auth.docker.io:443
+      proxy.golang.org:443
+      # ... (full list in the workflow file)
+```
+
+Additionally, all GitHub Actions are pinned to full commit hashes rather than mutable version tags. The semantic version is preserved as a comment for readability. This prevents supply-chain attacks via tag mutation.
+
+```yaml
+# Pinned to commit hash, semantic version in comment
+uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+```

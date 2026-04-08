@@ -1,0 +1,46 @@
+---
+title: "Security Tools Overview"
+description: "Hardened Docker images for security auditing and vulnerability scanning"
+---
+
+This category covers tools for auditing and validating the security posture of SSH servers, TLS/SSL configurations, Docker hosts, and source code. Each image is built on a minimal base, runs as a non-root user where possible, and is pinned to a digest for reproducible pulls.
+
+<CardGroup cols={2}>
+  <Card title="ssh-audit" icon="lock" href="/images/security/ssh-audit">
+    Audits SSH server and client configurations for weak algorithms, outdated ciphers, and policy violations.
+  </Card>
+  <Card title="sslyze" icon="shield-halved" href="/images/security/sslyze">
+    Fast TLS/SSL scanner that checks certificate chains, protocol versions, cipher suites, and known vulnerabilities.
+  </Card>
+  <Card title="testssl.sh" icon="certificate" href="/images/security/testssl">
+    Command-line tool that tests a server on any port for supported TLS/SSL ciphers, protocols, and cryptographic flaws.
+  </Card>
+  <Card title="trufflehog" icon="key" href="/images/security/trufflehog">
+    Scans git repositories and other sources to find leaked credentials and secrets.
+  </Card>
+  <Card title="docker-bench-security" icon="box" href="/images/security/docker-bench-security">
+    Runs automated checks based on the CIS Docker Benchmark to assess the security configuration of a Docker host.
+  </Card>
+</CardGroup>
+
+## Common hardening properties
+
+All images in this group share the following properties:
+
+- **Digest-pinned base images** — Base images are referenced by `sha256` digest, preventing silent tag mutations.
+- **Non-root execution** — Processes run as unprivileged users (`nobody`, `ssh-audit`, `testssl`) where the tool supports it.
+- **Minimal dependencies** — Multi-stage builds (where applicable) and `apk del` / `apt autoremove` remove build-time packages from the final image.
+- **No shell in Go images** — The trufflehog image is built from a scratch-compatible Alpine layer with only the compiled binary and `git`.
+
+## Registries
+
+All images are available from two registries:
+
+| Registry | Pull command prefix |
+|---|---|
+| GitHub Container Registry (recommended) | `ghcr.io/jauderho/<image>:latest` |
+| Docker Hub | `jauderho/<image>:latest` |
+
+<Note>
+GitHub Container Registry is the primary build target and has higher pull rate limits than Docker Hub.
+</Note>

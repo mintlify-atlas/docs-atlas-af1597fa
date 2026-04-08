@@ -1,0 +1,103 @@
+---
+title: "nginx (distroless)"
+description: "nginx on a distroless base image for minimal attack surface"
+---
+
+This image takes the official nginx Debian binary and repackages it into a [distroless](https://github.com/GoogleContainerTools/distroless) base. The result is a container with no shell, no package manager, no cron daemon, and no other OS utilities — only nginx and its runtime library dependencies.
+
+<Warning>
+  The upstream distroless base image (`gcr.io/distroless/base-debian12`) has historically been slow to receive fixes for CVEs flagged by scanners such as Trivy, Snyk, and Anchore. For security-sensitive environments, use the [hardened nginx image](/images/web/nginx) instead — it is compiled from source and does not carry distro library baggage.
+</Warning>
+
+## Pull
+
+<Tabs>
+  <Tab title="GitHub Container Registry">
+    ```bash
+    docker pull ghcr.io/jauderho/nginx-distroless:latest
+    ```
+  </Tab>
+  <Tab title="Docker Hub">
+    ```bash
+    docker pull jauderho/nginx-distroless:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Run
+
+```bash
+docker run -d \
+  --name nginx-distroless \
+  -p 80:80 \
+  -p 443:443 \
+  ghcr.io/jauderho/nginx-distroless:latest
+```
+
+To serve your own static files:
+
+```bash
+docker run -d \
+  --name nginx-distroless \
+  -p 80:80 \
+  -p 443:443 \
+  -v /path/to/your/site:/usr/share/nginx/html:ro \
+  -v /path/to/nginx.conf:/etc/nginx/nginx.conf:ro \
+  ghcr.io/jauderho/nginx-distroless:latest
+```
+
+## Exposed ports
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| 80 | TCP | HTTP |
+| 443 | TCP | HTTPS |
+
+## How it is built
+
+The image uses a two-stage build:
+
+1. **Stage 1 (`base`)** — starts from the official `nginx:1.29.7` Debian image and copies the nginx binary, its shared library dependencies, configuration directories, and timezone data into `/opt`.
+2. **Stage 2** — copies `/opt` into `gcr.io/distroless/base-debian12`, which contains only the minimal libc runtime needed to execute a binary.
+
+```dockerfile
+FROM nginx:1.29.7 AS base
+
+RUN mkdir -p /opt/var/cache/nginx && \
+    cp -a --parents /usr/lib/nginx /opt && \
+    cp -a --parents /usr/share/nginx /opt && \
+    cp -a --parents /etc/nginx /opt && \
+    cp -a --parents /usr/sbin/nginx /opt && \
+    cp -a --parents /usr/sbin/nginx-debug /opt && \
+    # ... runtime libraries ...
+    cp /usr/share/zoneinfo/UTC /opt/etc/localtime
+
+FROM gcr.io/distroless/base-debian12
+
+COPY --from=base /opt /
+
+EXPOSE 80 443
+ENTRYPOINT ["nginx", "-g", "daemon off;"]
+```
+
+## The distroless tradeoff
+
+| Aspect | With shell (standard image) | Distroless |
+|---|---|---|
+| Attack surface | Larger — shell and tools are present | Smaller — only the nginx binary and libraries |
+| Container escape risk | Higher — an attacker can execute shell commands | Lower — no shell to execute |
+| Debugging | `docker exec -it <container> sh` works | No shell; use `docker cp` or sidecar containers |
+| CVE surface | Depends on Alpine / Debian package state | Depends on distroless base image update cadence |
+| Recommended for | Development, staging, flexible production | High-security production where debuggability is acceptable to sacrifice |
+
+<Note>
+  Because there is no shell inside the container, you cannot use `docker exec` to get an interactive session. If you need to inspect the running container, attach a debug sidecar with `docker run --pid=container:<name> --net=container:<name> busybox sh`, or use your orchestration platform's ephemeral container feature.
+</Note>
+
+## Timezone configuration
+
+The build accepts a `TIME_ZONE` build argument (defaulting to `UTC`) that controls which zoneinfo file is copied into the image. To use a different timezone:
+
+```bash
+docker build --build-arg TIME_ZONE=America/New_York .
+```
